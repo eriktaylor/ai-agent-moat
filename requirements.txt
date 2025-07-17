@@ -1,0 +1,10 @@
+langchain
+langchain-community
+langchain-huggingface
+langchain-google-genai
+google-api-python-client
+faiss-cpu
+yfinance
+beautifulsoup4
+transformers
+sentence-transformers
