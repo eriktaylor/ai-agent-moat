@@ -14,7 +14,7 @@ Unlike a simple chatbot, the AI agent in this project is a more sophisticated sy
 
 * **A Reasoning Engine:** It uses a powerful Large Language Model (Google's Gemini 2.5 Flash) for reasoning and analysis.
 * **A Set of Tools:** It has access to real-world information through tools like Google Search, a PDF-parsing web scraper, and the Yahoo Finance API.
-* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, **and discussions from retail investor forums (like Reddit and Seeking Alpha)**. It then uses this data to reason from two distinct investor "personas"—a short-term **Market Investor** and a long-term **Value Investor**—to provide a balanced and nuanced analysis that contrasts professional and retail sentiment.
+* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, **and discussions from retail investor forums (like Reddit and Seeking Alpha)**. It then uses this data to reason from two distinct investor "personas" including a short-term **Market Investor** and a long-term **Value Investor** to provide a balanced and nuanced analysis that contrasts professional and retail sentiment.
 
 ---
 
