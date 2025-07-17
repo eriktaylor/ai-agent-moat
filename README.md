@@ -4,7 +4,7 @@ This project is an AI-powered agent that automates the initial phase of investme
 
 ## Business Objective
 
-Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in minutes.
+Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis ~1 minute.
 
 ---
 
