@@ -4,15 +4,23 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_community.utilities import GoogleSearchAPIWrapper
 import re
+import os
+
+# Import the tools this agent will use
+from tools import get_stock_info, scrape_website
 
 class ResearchAgent:
     def __init__(self, llm, embeddings_model):
         self.llm = llm
         self.embeddings_model = embeddings_model
         self.text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-        self.search_wrapper = GoogleSearchAPIWrapper(google_cse_id=GOOGLE_CSE_ID, google_api_key=GOOGLE_API_KEY)
+        # The agent needs access to the API keys from the environment
+        self.search_wrapper = GoogleSearchAPIWrapper(
+            google_cse_id=os.environ.get('GOOGLE_CSE_ID'),
+            google_api_key=os.environ.get('GOOGLE_API_KEY')
+        )
         self.cache = {}
 
     def clear_cache(self):
@@ -20,7 +28,6 @@ class ResearchAgent:
         print("Cache cleared.")
         self.cache = {}
 
-    # <<< CHANGE: This method now separates financial data from unstructured text >>>
     def _get_context(self, entity_name, ticker):
         """Gathers context and returns financial data and unstructured text separately."""
         context_cache_key = f"context_{entity_name}_{ticker}"
@@ -71,13 +78,11 @@ class ResearchAgent:
         self.cache[context_cache_key] = (financial_data, unstructured_corpus)
         return financial_data, unstructured_corpus
 
-    # <<< CHANGE: This method now takes financial data as a direct input >>>
     def _create_rag_chain(self, system_prompt, unstructured_corpus):
         """Helper to create a RAG chain with a specific prompt."""
         docs = self.text_splitter.split_text(unstructured_corpus)
         vector_store = FAISS.from_texts(texts=docs, embedding=self.embeddings_model)
         retriever = vector_store.as_retriever()
-        # The prompt now has a dedicated placeholder for the guaranteed financial data
         prompt = ChatPromptTemplate.from_messages([
             ("system", system_prompt),
             ("human", "{input}"),
@@ -91,7 +96,6 @@ class ResearchAgent:
         if not unstructured_corpus:
             return "Could not gather context for outlook generation."
 
-        # <<< CHANGE: Prompt now has a dedicated {financial_data} placeholder >>>
         system_prompt = (
             "You are a 'Market Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
             "Now, using the retrieved context below (which includes both positive and critical news), generate a report. "
@@ -99,11 +103,10 @@ class ResearchAgent:
             "1. **Market Sentiment:** Synthesize the official news and the critical news to determine the overall market sentiment. Is it bullish, bearish, or mixed? Why?\n"
             "2. **Valuation Analysis:** Is the stock considered expensive or cheap? You MUST reference the 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable because EPS is negative, state this clearly and explain what a negative EPS implies for valuation.\n"
             "3. **Relative Performance (Implied):** Based on the context, how does this company's performance and outlook seem to compare to its peers or the broader market?"
-            "Retrieved Context:\n{context}"
+            "\n\nRetrieved Context:\n{context}\n\n"
             "DO NOT give financial advice. This is an objective summary of the data provided."
         )
         rag_chain = self._create_rag_chain(system_prompt, unstructured_corpus)
-        # <<< CHANGE: We now pass the financial_data directly into the prompt >>>
         response = rag_chain.invoke({"input": f"Market outlook for {entity_name}", "financial_data": financial_data})
         return response['answer']
 
@@ -120,13 +123,8 @@ class ResearchAgent:
             "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued'. Justify your conclusion briefly by referencing the P/E or EPS from the financial data.\n"
             "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats. You MUST incorporate information from the 'Critical News' headlines in the Weaknesses and Threats sections.\n"
             "3. **Competitive Moat:** Based on the SWOT analysis, describe the company's long-term competitive advantages. Is its moat wide, narrow, or degrading? You MUST consider the threats and weaknesses when assessing the durability of the moat."
-            "Retrieved Context:\n{context}"
+            "\n\nRetrieved Context:\n{context}"
         )
         rag_chain = self._create_rag_chain(system_prompt, unstructured_corpus)
         response = rag_chain.invoke({"input": f"Value analysis for {entity_name}", "financial_data": financial_data})
         return response['answer']
-
-# Initialize models and agent
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
-research_agent = ResearchAgent(llm=llm, embeddings_model=embeddings)
