@@ -4,7 +4,7 @@ This project is an AI-powered agent that automates the initial phase of investme
 
 ## Business Objective
 
-Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in ~1 minute.
+Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in minutes.
 
 ---
 
@@ -14,7 +14,7 @@ Unlike a simple chatbot, the AI agent in this project is a more sophisticated sy
 
 * **A Reasoning Engine:** It uses a powerful Large Language Model (Google's Gemini 2.5 Flash) for reasoning and analysis.
 * **A Set of Tools:** It has access to real-world information through tools like Google Search, a PDF-parsing web scraper, and the Yahoo Finance API.
-* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy (official news, critical concerns, and deep-dive reports). It then uses this data to reason from two distinct investor "personas" including a short-term **Market Investor** and a long-term **Value Investor** to provide a balanced and nuanced analysis.
+* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, **and discussions from retail investor forums (like Reddit and Seeking Alpha)**. It then uses this data to reason from two distinct investor "personas"—a short-term **Market Investor** and a long-term **Value Investor**—to provide a balanced and nuanced analysis that contrasts professional and retail sentiment.
 
 ---
 
