@@ -60,8 +60,16 @@ class ResearchAgent:
             unstructured_text_list.extend([f"Critical Headline: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in critical_results])
             print(f"Collected {len(critical_results)} critical headlines and snippets.")
 
-        print("--- Tier 3: Deep Dive ---")
-        deep_dive_query = f'\"{entity_name}\" market analysis OR in-depth report filetype:pdf OR site:globenewswire.com OR site:prnewswire.com'
+        # <<< CHANGE: Added a dedicated search for retail investor sentiment >>>
+        print("--- Tier 3: Retail Investor Sentiment ---")
+        retail_query = f'site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks OR site:seekingalpha.com OR site:fool.com "{entity_name}" OR "{ticker}"'
+        retail_results = self.search_wrapper.results(retail_query, num_results=4)
+        if retail_results:
+            unstructured_text_list.extend([f"Retail Forum Headline: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in retail_results])
+            print(f"Collected {len(retail_results)} retail forum headlines and snippets.")
+
+        print("--- Tier 4: Deep Dive ---")
+        deep_dive_query = f'\\"{entity_name}\\" market analysis OR in-depth report filetype:pdf OR site:globenewswire.com OR site:prnewswire.com'
         deep_dive_results = self.search_wrapper.results(deep_dive_query, num_results=2)
         if deep_dive_results:
             urls = [result['link'] for result in deep_dive_results if 'link' in result]
@@ -96,13 +104,14 @@ class ResearchAgent:
         if not unstructured_corpus:
             return "Could not gather context for outlook generation."
 
+        # <<< CHANGE: Updated prompt to include retail sentiment analysis >>>
         system_prompt = (
             "You are a 'Market Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below (which includes both positive and critical news), generate a report. "
+            "Now, using the retrieved context below (which includes professional news, critical reports, and retail investor forum discussions), generate a report. "
             "The report MUST be structured with the following sections:\n"
-            "1. **Market Sentiment:** Synthesize the official news and the critical news to determine the overall market sentiment. Is it bullish, bearish, or mixed? Why?\n"
-            "2. **Valuation Analysis:** Is the stock considered expensive or cheap? You MUST reference the 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable because EPS is negative, state this clearly and explain what a negative EPS implies for valuation.\n"
-            "3. **Relative Performance (Implied):** Based on the context, how does this company's performance and outlook seem to compare to its peers or the broader market?"
+            "1. **Professional Market Sentiment:** Based on the official news and critical reports, what is the professional sentiment? Is it bullish, bearish, or mixed? Why?\n"
+            "2. **Retail Investor Sentiment:** Based on the 'Retail Forum Headline' snippets, what is the general sentiment from retail investors? Is it aligned with or diverging from the professional sentiment?\n"
+            "3. **Valuation Analysis:** Is the stock considered expensive or cheap? You MUST reference the 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable because EPS is negative, state this clearly and explain what a negative EPS implies for valuation.\n"
             "\n\nRetrieved Context:\n{context}\n\n"
             "DO NOT give financial advice. This is an objective summary of the data provided."
         )
@@ -121,7 +130,7 @@ class ResearchAgent:
             "Now, using the retrieved context below (which includes both positive and critical news), generate a detailed business brief. "
             "The report MUST be structured with the following sections:\n"
             "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued'. Justify your conclusion briefly by referencing the P/E or EPS from the financial data.\n"
-            "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats. You MUST incorporate information from the 'Critical News' headlines in the Weaknesses and Threats sections.\n"
+            "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats. You MUST incorporate information from the 'Critical News' and 'Retail Forum' headlines in the Weaknesses and Threats sections.\n"
             "3. **Competitive Moat:** Based on the SWOT analysis, describe the company's long-term competitive advantages. Is its moat wide, narrow, or degrading? You MUST consider the threats and weaknesses when assessing the durability of the moat."
             "\n\nRetrieved Context:\n{context}"
         )
