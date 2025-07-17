@@ -8,3 +8,4 @@ yfinance
 beautifulsoup4
 transformers
 sentence-transformers
+PyMuPDF
