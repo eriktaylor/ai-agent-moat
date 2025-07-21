@@ -3,7 +3,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.runnables import RunnablePassthrough, RunnableParallel
+from langchain_core.runnables import RunnablePassthrough
 from langchain_core.documents import Document
 from langchain_community.utilities import GoogleSearchAPIWrapper
 import re
@@ -103,57 +103,57 @@ class ResearchAgent:
         self.cache[context_cache_key] = (financial_data, source_documents)
         return financial_data, source_documents
 
-    # <<< CHANGE: This method now correctly routes data to the retriever >>>
+    # <<< CHANGE: This method now formats context for numbered citations >>>
     def _create_rag_chain(self, system_prompt, source_documents):
-        """Helper to create a RAG chain that returns sources."""
         vector_store = FAISS.from_documents(documents=source_documents, embedding=self.embeddings_model)
         retriever = vector_store.as_retriever()
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{input}"),
-        ])
-        
-        question_answer_chain = create_stuff_documents_chain(self.llm, prompt)
-        
-        # This LCEL chain now correctly passes only the 'input' string to the retriever
+        def format_docs_with_citations(docs):
+            formatted_docs = []
+            for i, doc in enumerate(docs):
+                # Format each document with a citation number
+                doc_string = f"[Source {i+1}]: {doc.page_content}"
+                formatted_docs.append(doc_string)
+            return "\n\n".join(formatted_docs)
+
         rag_chain = (
-            RunnableParallel(
-                context=itemgetter("input") | retriever,
-                financial_data=itemgetter("financial_data"),
-                input=itemgetter("input"),
-            ).assign(answer=question_answer_chain)
+            {
+                "context": retriever | format_docs_with_citations,
+                "input": itemgetter("input"),
+                "financial_data": itemgetter("financial_data"),
+            }
+            | ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{input}")])
+            | self.llm
         )
-        return rag_chain
+        return rag_chain, retriever
 
     def _run_analysis(self, entity_name, ticker, system_prompt, query_input):
-        """Generic method to run an analysis and return answer with sources."""
         financial_data, source_documents = self._get_context(entity_name, ticker)
         if not source_documents:
             return {"answer": "Could not gather context for analysis.", "sources": []}
 
-        rag_chain = self._create_rag_chain(system_prompt, source_documents)
+        rag_chain, retriever = self._create_rag_chain(system_prompt, source_documents)
         
         response = rag_chain.invoke({
             "input": query_input,
             "financial_data": financial_data
         })
         
-        sources = [doc.metadata for doc in response['context']]
-        unique_sources = [dict(t) for t in {tuple(d.items()) for d in sources}]
+        # Get the sources that were actually used in the final context
+        relevant_docs = retriever.invoke(query_input)
         
-        return {"answer": response['answer'], "sources": unique_sources}
+        return {"answer": response.content, "sources": relevant_docs}
 
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
         system_prompt = (
             "You are a 'Market Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, generate a report. "
+            "Now, using the retrieved context below, generate a report. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "The report MUST be structured with the following sections:\n"
-            "1. **Professional Market Sentiment:** Based on official news and critical reports, what is the professional sentiment? Is it bullish, bearish, or mixed? Why?\n"
-            "2. **Retail Investor Sentiment:** Based on 'Retail Forum Headline' snippets, what is the general sentiment from retail investors? Is it aligned with or diverging from the professional sentiment?\n"
-            "3. **Valuation Analysis:** Is the stock expensive or cheap? You MUST reference 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable because EPS is negative, state this clearly.\n"
-            "**Crucially, you MUST cite your sources for any claims made, referencing the source title from the metadata of the provided documents.**"
+            "1. **Professional Market Sentiment:** Based on official news and critical reports, what is the professional sentiment?\n"
+            "2. **Retail Investor Sentiment:** Based on 'Retail Forum' snippets, what is the general sentiment from retail investors?\n"
+            "3. **Valuation Analysis:** Is the stock expensive or cheap? You MUST reference 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable, state this clearly.\n"
+            "**Crucially, you MUST cite your sources for any claims made by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
             "\n\nRetrieved Context:\n{context}\n\n"
             "DO NOT give financial advice. This is an objective summary."
         )
@@ -163,12 +163,12 @@ class ResearchAgent:
         print("\nGenerating Value Investor Analysis...")
         system_prompt = (
             "You are a 'Value Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, generate a detailed business brief. "
+            "Now, using the retrieved context below, generate a detailed business brief. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "The report MUST be structured with the following sections:\n"
-            "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued'. Justify your conclusion by referencing the P/E or EPS from the financial data.\n"
-            "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats. Incorporate information from 'Critical News' and 'Retail Forum' headlines.\n"
-            "3. **Competitive Moat:** Based on the SWOT analysis, describe the company's long-term competitive advantages. Is its moat wide, narrow, or degrading?\n"
-            "**Crucially, you MUST cite your sources for any claims made, referencing the source title from the metadata of the provided documents.**"
+            "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued', justifying your conclusion with financial data.\n"
+            "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats.\n"
+            "3. **Competitive Moat:** Based on the SWOT analysis, describe the company's long-term competitive advantages.\n"
+            "**Crucially, you MUST cite your sources for any claims made by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
             "\n\nRetrieved Context:\n{context}"
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Value analysis for {entity_name}")
@@ -178,10 +178,38 @@ class ResearchAgent:
         system_prompt = (
             "You are a skeptical 'Devil's Advocate' financial analyst. Your sole purpose is to challenge the bullish investment thesis. "
             "Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, identify the single strongest counter-argument or hidden risk. "
+            "Now, using the retrieved context below, identify the single strongest counter-argument or hidden risk. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "Your response must be a concise, well-reasoned paragraph. "
-            "Base your argument ONLY on the provided context. Focus exclusively on the most significant risk you can find in the data. "
-            "**You MUST cite the source of the information you use.**"
+            "**You MUST cite the source of the information you use by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
             "\n\nRetrieved Context:\n{context}"
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
+
+    # <<< CHANGE: Added the new Lead Analyst persona for a final summary >>>
+    def generate_final_summary(self, market_outlook, value_analysis, devils_advocate):
+        print("\nGenerating Final Consensus Summary...")
+        
+        # Combine the previous analyses to form the context for the final agent
+        combined_analysis = (
+            f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
+            f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
+            f"--- Devil's Advocate View ---\n{devils_advocate}"
+        )
+        
+        system_prompt = (
+            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating. "
+            "You have been provided with three reports: a Market Investor's outlook (focused on sentiment and short-term factors), a Value Investor's analysis (focused on fundamentals and long-term moat), and a Devil's Advocate's critique (focused on the single biggest risk). "
+            "Your task is to synthesize these three perspectives into a final, balanced summary. "
+            "Your response MUST be structured with the following sections:\n"
+            "1. **Consensus Rating:** Provide a single rating: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives. For example, 'While the market sentiment is bullish, the value investor's concerns about valuation and the significant risk identified by the devil's advocate lead to a rating of Neutral with Caution.'"
+        )
+        
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", system_prompt),
+            ("human", "{input}"),
+        ])
+        
+        chain = prompt | self.llm
+        response = chain.invoke({"input": combined_analysis})
+        return response.content
