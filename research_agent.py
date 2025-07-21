@@ -28,7 +28,6 @@ class ResearchAgent:
         print("Cache cleared.")
         self.cache = {}
 
-    # <<< CHANGE: This method now extracts and stores the publication date for each source >>>
     def _get_context(self, entity_name, ticker):
         """Gathers context and returns financial data and a list of source documents."""
         context_cache_key = f"context_{entity_name}_{ticker}"
@@ -128,19 +127,19 @@ class ResearchAgent:
 
         rag_chain = (
             {
-                "context": itemgetter("input") | retriever,
+                "context_docs": itemgetter("input") | retriever,
                 "input": itemgetter("input"),
                 "financial_data": itemgetter("financial_data"),
             }
             | RunnablePassthrough.assign(
-                context_formatted=lambda x: format_docs_with_citations(x["context"])
+                context_formatted=lambda x: format_docs_with_citations(x["context_docs"])
             )
             | {
                 "answer": (
-                    ChatPromptTemplate.from_messages([("system", system_prompt), ("human", "{input}")])
+                    ChatPromptTemplate.from_template(system_prompt)
                     | self.llm
                 ),
-                "sources": itemgetter("context"),
+                "sources": itemgetter("context_docs"),
             }
         )
         return rag_chain
@@ -218,10 +217,7 @@ class ResearchAgent:
             "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives."
         )
         
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            ("human", "{input}"),
-        ])
+        prompt = ChatPromptTemplate.from_template(system_prompt)
         
         chain = prompt | self.llm
         response = chain.invoke({"input": combined_analysis})
