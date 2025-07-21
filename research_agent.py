@@ -8,6 +8,7 @@ from langchain_core.documents import Document
 from langchain_community.utilities import GoogleSearchAPIWrapper
 import re
 import os
+from operator import itemgetter
 
 # Import the tools this agent will use
 from tools import get_stock_info, scrape_website
@@ -28,7 +29,6 @@ class ResearchAgent:
         print("Cache cleared.")
         self.cache = {}
 
-    # <<< CHANGE: This method now returns a list of LangChain Document objects for citations >>>
     def _get_context(self, entity_name, ticker):
         """Gathers context and returns financial data and a list of source documents."""
         context_cache_key = f"context_{entity_name}_{ticker}"
@@ -36,7 +36,6 @@ class ResearchAgent:
             print("Returning cached context.")
             return self.cache[context_cache_key]
 
-        # Get financial data
         financial_data = "No financial data available."
         if ticker:
             print(f"--- Getting Financial Data for {ticker} ---")
@@ -45,7 +44,6 @@ class ResearchAgent:
                 financial_data = financial_data_result
                 print("Successfully collected financial data.")
 
-        # Gather unstructured text into a list of Document objects
         source_documents = []
         
         print("--- Tier 1: Official News & Analysis ---")
@@ -55,7 +53,7 @@ class ResearchAgent:
             for r in headline_results:
                 doc = Document(
                     page_content=f"Headline: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}",
-                    metadata={"source": r.get('link', ''), "title": r.get('title', '')}
+                    metadata={"source": r.get('link', ''), "title": r.get('title', 'Source')}
                 )
                 source_documents.append(doc)
             print(f"Collected {len(headline_results)} headlines and snippets.")
@@ -67,7 +65,7 @@ class ResearchAgent:
             for r in critical_results:
                 doc = Document(
                     page_content=f"Critical Headline: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}",
-                    metadata={"source": r.get('link', ''), "title": r.get('title', '')}
+                    metadata={"source": r.get('link', ''), "title": r.get('title', 'Source')}
                 )
                 source_documents.append(doc)
             print(f"Collected {len(critical_results)} critical headlines and snippets.")
@@ -79,7 +77,7 @@ class ResearchAgent:
             for r in retail_results:
                 doc = Document(
                     page_content=f"Retail Forum Headline: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}",
-                    metadata={"source": r.get('link', ''), "title": r.get('title', '')}
+                    metadata={"source": r.get('link', ''), "title": r.get('title', 'Source')}
                 )
                 source_documents.append(doc)
             print(f"Collected {len(retail_results)} retail forum headlines and snippets.")
@@ -105,7 +103,7 @@ class ResearchAgent:
         self.cache[context_cache_key] = (financial_data, source_documents)
         return financial_data, source_documents
 
-    # <<< CHANGE: This method now uses LCEL to return both answer and sources >>>
+    # <<< CHANGE: This method now correctly routes data to the retriever >>>
     def _create_rag_chain(self, system_prompt, source_documents):
         """Helper to create a RAG chain that returns sources."""
         vector_store = FAISS.from_documents(documents=source_documents, embedding=self.embeddings_model)
@@ -118,11 +116,13 @@ class ResearchAgent:
         
         question_answer_chain = create_stuff_documents_chain(self.llm, prompt)
         
-        # This LCEL chain is designed to pass sources through
-        rag_chain = RunnableParallel(
-            {"context": retriever, "input": RunnablePassthrough(), "financial_data": RunnablePassthrough()}
-        ).assign(
-            answer=question_answer_chain
+        # This LCEL chain now correctly passes only the 'input' string to the retriever
+        rag_chain = (
+            RunnableParallel(
+                context=itemgetter("input") | retriever,
+                financial_data=itemgetter("financial_data"),
+                input=itemgetter("input"),
+            ).assign(answer=question_answer_chain)
         )
         return rag_chain
 
@@ -139,9 +139,7 @@ class ResearchAgent:
             "financial_data": financial_data
         })
         
-        # Extract the source documents from the context
         sources = [doc.metadata for doc in response['context']]
-        # Remove duplicate sources
         unique_sources = [dict(t) for t in {tuple(d.items()) for d in sources}]
         
         return {"answer": response['answer'], "sources": unique_sources}
@@ -175,7 +173,6 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Value analysis for {entity_name}")
 
-    # <<< CHANGE: Added the new Devil's Advocate persona >>>
     def generate_devils_advocate_view(self, entity_name, ticker):
         print("\nGenerating Devil's Advocate View...")
         system_prompt = (
