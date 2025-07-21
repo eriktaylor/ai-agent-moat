@@ -103,22 +103,22 @@ class ResearchAgent:
         self.cache[context_cache_key] = (financial_data, source_documents)
         return financial_data, source_documents
 
-    # <<< CHANGE: This method now formats context for numbered citations >>>
     def _create_rag_chain(self, system_prompt, source_documents):
+        """Helper to create a RAG chain that returns sources."""
         vector_store = FAISS.from_documents(documents=source_documents, embedding=self.embeddings_model)
         retriever = vector_store.as_retriever()
 
         def format_docs_with_citations(docs):
             formatted_docs = []
             for i, doc in enumerate(docs):
-                # Format each document with a citation number
                 doc_string = f"[Source {i+1}]: {doc.page_content}"
                 formatted_docs.append(doc_string)
             return "\n\n".join(formatted_docs)
 
+        # This LCEL chain correctly routes the 'input' string to the retriever
         rag_chain = (
             {
-                "context": retriever | format_docs_with_citations,
+                "context": itemgetter("input") | retriever | format_docs_with_citations,
                 "input": itemgetter("input"),
                 "financial_data": itemgetter("financial_data"),
             }
@@ -128,6 +128,7 @@ class ResearchAgent:
         return rag_chain, retriever
 
     def _run_analysis(self, entity_name, ticker, system_prompt, query_input):
+        """Generic method to run an analysis and return answer with sources."""
         financial_data, source_documents = self._get_context(entity_name, ticker)
         if not source_documents:
             return {"answer": "Could not gather context for analysis.", "sources": []}
@@ -139,7 +140,6 @@ class ResearchAgent:
             "financial_data": financial_data
         })
         
-        # Get the sources that were actually used in the final context
         relevant_docs = retriever.invoke(query_input)
         
         return {"answer": response.content, "sources": relevant_docs}
@@ -185,11 +185,9 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
 
-    # <<< CHANGE: Added the new Lead Analyst persona for a final summary >>>
     def generate_final_summary(self, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
         
-        # Combine the previous analyses to form the context for the final agent
         combined_analysis = (
             f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
@@ -198,11 +196,11 @@ class ResearchAgent:
         
         system_prompt = (
             "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating. "
-            "You have been provided with three reports: a Market Investor's outlook (focused on sentiment and short-term factors), a Value Investor's analysis (focused on fundamentals and long-term moat), and a Devil's Advocate's critique (focused on the single biggest risk). "
+            "You have been provided with three reports: a Market Investor's outlook, a Value Investor's analysis, and a Devil's Advocate's critique. "
             "Your task is to synthesize these three perspectives into a final, balanced summary. "
             "Your response MUST be structured with the following sections:\n"
             "1. **Consensus Rating:** Provide a single rating: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
-            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives. For example, 'While the market sentiment is bullish, the value investor's concerns about valuation and the significant risk identified by the devil's advocate lead to a rating of Neutral with Caution.'"
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives."
         )
         
         prompt = ChatPromptTemplate.from_messages([
