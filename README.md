@@ -1,90 +1,57 @@
-AI Agent for Financial Moat Analysis
+# AI Agent for Financial Moat Analysis
+
 This project is an AI-powered agent that automates the initial phase of investment research by analyzing a company's competitive advantages, or "moat."
 
-Business Objective
+## Business Objective
+
 Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in minutes.
 
-What is an AI Agent?
+---
+
+## What is an AI Agent?
+
 Unlike a simple chatbot, the AI agent in this project is a more sophisticated system designed to achieve a complex goal. It operates with a distinct workflow:
 
-A Reasoning Engine: It uses a powerful Large Language Model (Google's Gemini 2.5 Flash) for reasoning and analysis.
+* **A Reasoning Engine:** It uses a powerful Large Language Model (Google's Gemini 2.5 Flash) for reasoning and analysis.
+* **A Set of Tools:** It has access to real-world information through tools like Google Search, a PDF-parsing web scraper, and the Yahoo Finance API.
+* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, **and discussions from retail investor forums (like Reddit and Seeking Alpha)**. It then uses this data to reason from two distinct investor "personas" including a short-term **Market Investor** and a long-term **Value Investor** to provide a balanced and nuanced analysis that contrasts professional and retail sentiment.
 
-A Set of Tools: It has access to real-world information through tools like Google Search, a PDF-parsing web scraper, and the Yahoo Finance API.
+---
 
-A Workflow with Personas: The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, and discussions from retail investor forums (like Reddit and Seeking Alpha). It then uses this data to reason from multiple distinct investor "personas"—a Market Investor, a Value Investor, and a Devil's Advocate—to provide a balanced and nuanced analysis.
+## The Role of RAG (Retrieval-Augmented Generation)
 
-The Role of RAG (Retrieval-Augmented Generation)
-A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where Retrieval-Augmented Generation (RAG) becomes essential.
+A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where **Retrieval-Augmented Generation (RAG)** becomes essential.
 
-RAG is the process of connecting an LLM to an external, live source of data. This RAG architecture is crucial for the agent's reliability, as it grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
+RAG is the process of connecting an LLM to an external, live source of data. For this agent, the RAG pipeline works as follows:
 
-Project Evolution
-This project has been actively developed to increase its analytical depth and explainability.
+1.  **Retrieve:** The agent uses its tools to fetch the latest news, financial data, and reports from the internet.
+2.  **Augment:** This fresh information is compiled into a dynamic, "on-the-fly" knowledge base for the specific company being analyzed.
+3.  **Generate:** The LLM is instructed to base its analysis *only* on this freshly provided context.
 
-Initial Commit (July 16, 2025): Core RAG pipeline and multi-persona analysis (Market and Value investors).
+This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
-Recent Updates (July 21, 2025):
+---
 
-Added a third "Devil's Advocate" persona to stress-test the investment thesis and identify key risks.
+## Technology Stack
 
-Implemented a final consensus agent that synthesizes the different persona outputs into a single, actionable rating.
+* **LLM:** Google Gemini 2.5 Flash
+* **Agent Framework:** LangChain
+* **Embedding Model:** `all-MiniLM-L6-v2` (from Hugging Face)
+* **Vector Store:** FAISS (for in-memory semantic search)
+* **Data & Tools:**
+    * Google Custom Search API
+    * Yahoo Finance API (`yfinance`)
+    * PDF Parsing (`PyMuPDF`)
+    * Google Colab (for development and demonstration)
 
-Integrated RAG source citations with publication dates, making the agent's analysis fully auditable and explainable.
+---
 
-Example Analysis
-Here are two examples of the agent's output for NVIDIA (NVDA), showcasing the final consensus rating and the detailed, cited analysis from one of the personas.
+## How to Run
 
-Final Consensus Summary
-This is the high-level summary generated by the "Lead Analyst" persona after synthesizing the reports from the other three agents.
-
-Consensus Rating: Neutral with Caution
-
-Summary Justification:
-While the Market Investor highlights compelling growth opportunities and positive industry momentum, the Value Investor's analysis raises significant concerns regarding the current valuation, suggesting the stock may be trading at a premium unsupported by its intrinsic fundamentals. Furthermore, the Devil's Advocate effectively underscores material risks, including intensifying competition, potential regulatory headwinds, and execution challenges for key strategic initiatives. Given the promising market dynamics are significantly offset by stretched valuations and identifiable downside risks, a cautious stance is warranted until there is clearer evidence of sustainable competitive advantage or a more attractive entry point.
-
-Devil's Advocate View (with Citations)
-This example demonstrates the agent's ability to perform a specific type of analysis and cite its sources.
-
-Despite NVIDIA's extraordinary financial performance and its central role in driving current equity market returns and capital spending, a significant hidden risk lies in the sustainability of its customers' massive AI infrastructure investments. The crucial question for investors is whether hyperscalers and other AI infrastructure users can generate adequate returns on the hundreds of billions in AI-related capital spending, a level of investment that rivals historical periods of over-exuberance like the mainframe or fiber optic eras [4]. For these returns to materialize, a critical shift towards "inference" tasks, where AI runs production models for corporate customers, must occur within the next 12-18 months, rather than GPU capacity primarily being used for foundational model training [4]. Should these customers fail to achieve sufficient profitability from their AI deployments, the demand driving NVIDIA's current growth and its elevated valuation could prove unsustainable.
-
-Sources Used in this Section:
-
-Latest News | NVIDIA Newsroom
-
-The NVIDIA Subreddit
-
-How is deepseek bearish for nvda : r/wallstreetbets
-
-EYE ON THE MARKET • MICHAEL CEMBALEST • JP MORGAN ...
-
-Technology Stack
-LLM: Google Gemini 2.5 Flash
-
-Agent Framework: LangChain
-
-Embedding Model: all-MiniLM-L6-v2 (from Hugging Face)
-
-Vector Store: FAISS (for in-memory semantic search)
-
-Data & Tools:
-
-Google Custom Search API
-
-Yahoo Finance API (yfinance)
-
-PDF Parsing (PyMuPDF)
-
-Google Colab (for development and demonstration)
-
-How to Run
-Running the agent is simple and requires no local installation.
-
-Open in Google Colab:
-Click the link below to open the project directly in Google Colab. This is the only step needed to access the application.
-Try the AI Moat Analysis Agent Here
-
-Set Up API Keys:
-Once the notebook is open, follow the detailed instructions in Step 1 of the notebook to acquire your free API keys and add them to the Colab Secrets Manager.
-
-Run the Analysis:
-Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
+1.  **Clone the Repository:**
+    ```bash
+    git clone [https://github.com/eriktaylor/ai-agent-moat.git](https://github.com/eriktaylor/ai-agent-moat.git)
+    ```
+2.  **Open in Google Colab:** Upload the `app.ipynb` notebook to Google Colab.
+3.  **Set Up API Keys:** In the Colab Secrets Manager (found in the left sidebar), add your `GOOGLE_API_KEY` and `GOOGLE_CSE_ID`.
+4.  **Run the Notebook:** Execute the cells in the `app.ipynb` notebook. The first cell will install all necessary dependencies, and the final cell will prompt you for a company name and stock ticker to begin the analysis.
