@@ -10,11 +10,7 @@ Strategic analysis of a company's competitive advantages, or 'moat,' is a corner
 
 ## What is an AI Agent?
 
-Unlike a simple chatbot, the AI agent in this project is a more sophisticated system designed to achieve a complex goal. It operates with a distinct workflow:
-
-* **A Reasoning Engine:** It uses a powerful Large Language Model (Google's Gemini 2.5 Flash) for reasoning and analysis.
-* **A Set of Tools:** It has access to real-world information through tools like Google Search, a PDF-parsing web scraper, and the Yahoo Finance API.
-* **A Workflow with Personas:** The agent gathers data through a multi-tiered search strategy that includes official news, critical reports, and discussions from retail investor forums (like Reddit and Seeking Alpha). It then uses this data to reason from multiple distinct investor "personas" including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
+Unlike a simple chatbot, the AI agent in this project is a more sophisticated system designed to achieve a complex goal. It operates with a distinct workflow, combining a Reasoning Engine (Google's Gemini 2.5 Flash) with a Set of Tools to access real-world information like financial data, live news, and social media. The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
 
 ---
 
