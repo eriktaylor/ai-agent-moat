@@ -2,7 +2,7 @@ from IPython.display import display, HTML
 
 def display_analysis(title, company_name, result, is_summary=False):
     """
-    Formats and displays the agent's analysis in a structured HTML format.
+    Formats and displays the agent's analysis in a structured HTML format for Colab.
     """
     print(f"\n--- {title} for {company_name} ---")
     
