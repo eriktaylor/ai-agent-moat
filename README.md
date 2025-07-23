@@ -90,5 +90,5 @@ For a more detailed, step-by-step tutorial on the technical implementation, arch
 
 ---
 
-## Disclaimer
+# Disclaimer
 The content and analysis provided by this AI agent are for informational and educational purposes only and should not be construed as financial advice, investment recommendations, or an offer or solicitation to buy or sell any securities. All investment decisions should be made with the guidance of a qualified financial professional.
