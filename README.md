@@ -20,8 +20,6 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
-
----
 ## Project Evolution
 
 This project has been actively developed to increase its analytical depth and explainability.
@@ -35,8 +33,6 @@ This project has been actively developed to increase its analytical depth and ex
 * Implemented a **final consensus agent** that synthesizes the different persona outputs into a single, actionable rating.
 
 * Integrated **RAG source citations** with publication dates (where available), making the agent's analysis auditable and explainable.
-
----
 
 ## Example Analysis
 
@@ -61,8 +57,6 @@ This example demonstrates the agent's ability to perform a specific type of anal
 > 3. How is deepseek bearish for nvda : r/wallstreetbets
 > 4. EYE ON THE MARKET • MICHAEL CEMBALEST • JP MORGAN ...
 
----
-
 ## Technology Stack
 
 * **LLM:** Google Gemini 2.5 Flash
@@ -74,8 +68,6 @@ This example demonstrates the agent's ability to perform a specific type of anal
     * Yahoo Finance API (`yfinance`)
     * PDF Parsing (`PyMuPDF`)
     * Google Colab (for development and demonstration)
-
----
 
 ## How to Run
 
@@ -90,8 +82,6 @@ Once the notebook is open, follow the detailed instructions in Step 1 of the not
 
 3. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
-
----
 
 ## Further Reading & Technical Deep Dive
 For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
