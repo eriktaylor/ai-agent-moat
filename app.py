@@ -1,7 +1,6 @@
 import streamlit as st
 import datetime
 import re
-import locale
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from research_agent import ResearchAgent
@@ -16,7 +15,7 @@ st.set_page_config(
 )
 
 # --- App Title and Description ---
-st.title("AI Agent for Financial Moat Analysis")
+st.title("🤖 AI Agent for Financial Moat Analysis")
 st.markdown("""
 Welcome to the interactive demo of the AI Financial Analyst Agent.
 This tool automates investment research by analyzing a company's competitive advantages, or "moat."
@@ -38,6 +37,7 @@ def parse_financial_data(data_string):
     data = {}
     if not isinstance(data_string, str):
         return data
+    # Regex to capture key-value pairs, handling potential spaces and colons
     pattern = re.compile(r"([^:]+):\s*(.*)")
     for line in data_string.split('\n'):
         match = pattern.match(line)
@@ -46,31 +46,6 @@ def parse_financial_data(data_string):
             value = match.group(2).strip()
             data[key] = value
     return data
-
-def format_large_number(value_str):
-    """Formats a number string into a human-readable currency format (e.g., $2.5T, $100B)."""
-    if value_str is None or value_str == "N/A":
-        return "N/A"
-    try:
-        num = float(value_str)
-        if num >= 1_000_000_000_000:
-            return f"${num / 1_000_000_000_000:.2f}T"
-        elif num >= 1_000_000_000:
-            return f"${num / 1_000_000_000:.2f}B"
-        elif num >= 1_000_000:
-            return f"${num / 1_000_000:.2f}M"
-        else:
-            return f"${num:,.2f}"
-    except (ValueError, TypeError):
-        return "N/A"
-
-# <<< NEW: Helper function to find the first available value from a list of keys >>>
-def get_first_available_value(data_dict, keys_to_try):
-    """Iterates through a list of keys and returns the first found value."""
-    for key in keys_to_try:
-        if key in data_dict and data_dict[key] not in [None, "N/A"]:
-            return data_dict[key]
-    return "N/A"
 
 
 # --- Sidebar for Inputs and API Keys ---
@@ -126,7 +101,6 @@ def run_full_analysis(company_name, stock_ticker):
             analysis_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
 
             analysis_results["final_summary"] = research_agent.generate_final_summary(
-                company_name,
                 analysis_results["market_outlook"].get('answer', ''),
                 analysis_results["value_analysis"].get('answer', ''),
                 analysis_results["devils_advocate"].get('answer', '')
@@ -140,6 +114,7 @@ def run_full_analysis(company_name, stock_ticker):
 
 # --- UI Display Logic ---
 
+# When "Run New Analysis" is clicked, add a pending placeholder and rerun
 if run_button:
     if not google_api_key:
         st.error("Please enter your Google Gemini API Key in the sidebar to proceed.")
@@ -153,9 +128,10 @@ if run_button:
             "status": "pending"
         }
         st.session_state.analysis_history.insert(0, placeholder)
-        st.session_state.current_analysis_index = 0
+        st.session_state.current_analysis_index = 0 # Immediately view the new one
         st.rerun()
 
+# Check if there is a pending analysis to be run
 pending_analysis_index = next((i for i, an in enumerate(st.session_state.analysis_history) if an.get("status") == "pending"), None)
 
 if pending_analysis_index is not None:
@@ -172,60 +148,46 @@ if st.session_state.current_analysis_index is not None:
 
     if res.get("status") == "pending":
         st.info("⏳ Analysis is running...")
-        st.stop()
+        st.stop() # Stop further rendering until the analysis is done
 
     st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})", divider="rainbow")
 
+    # --- NEW: Display Key Financials as Metrics ---
     st.subheader("Key Financial Data")
     financials = parse_financial_data(res.get("financial_data", ""))
     if financials:
         cols = st.columns(4)
-        
-        # <<< CHANGE: Implemented fallback logic for the price metric >>>
-        # Metric 1: Current Price (with fallback)
-        price_keys_to_try = ["Regular Market Price", "Current Price", "Previous Close", "Open"]
-        price_val = get_first_available_value(financials, price_keys_to_try)
-        try:
-            price_str = f"${float(price_val):.2f}"
-        except (ValueError, TypeError):
-            price_str = "N/A"
-        cols[0].metric(label="Current Price", value=price_str)
-        
-        # Metric 2: Market Cap
-        market_cap_val = financials.get("Market Cap", "N/A")
-        cols[1].metric(label="Market Cap", value=format_large_number(market_cap_val))
-
-        # Metric 3: P/E Ratio
-        pe_ratio_val = financials.get("Trailing P/E", "N/A")
-        try:
-            pe_ratio_str = f"{float(pe_ratio_val):.2f}"
-        except (ValueError, TypeError):
-            pe_ratio_str = "N/A"
-        cols[2].metric(label="P/E Ratio", value=pe_ratio_str)
-        
-        # Metric 4: EPS
-        eps_val = financials.get("Trailing EPS", "N/A")
-        try:
-            eps_str = f"{float(eps_val):.2f}"
-        except (ValueError, TypeError):
-            eps_str = "N/A"
-        cols[3].metric(label="EPS", value=eps_str)
-
+        metrics_map = {
+            "Previous Close": "Previous Close",
+            "Market Cap": "Market Cap",
+            "Trailing P/E": "P/E Ratio",
+            "Trailing EPS": "EPS"
+        }
+        for i, (key, display_name) in enumerate(metrics_map.items()):
+            value = financials.get(key, "N/A")
+            cols[i].metric(label=display_name, value=value)
     else:
         st.info("Financial data could not be retrieved.")
 
+
+    # --- NEW: Use Tabs for Cleaner Layout ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Final Summary", "Market Outlook", "Value Analysis", "Devil's Advocate", "Feedback"
     ])
 
     with tab1:
         display_analysis("Final Consensus Summary", res['company_name'], res.get("final_summary", "Not available"), is_summary=True)
+
     with tab2:
         display_analysis("AI-Generated Market Investor Outlook", res['company_name'], res.get("market_outlook", {}))
+
     with tab3:
         display_analysis("AI-Generated Value Investor Analysis", res['company_name'], res.get("value_analysis", {}))
+
     with tab4:
         display_analysis("AI-Generated Devil's Advocate View", res['company_name'], res.get("devils_advocate", {}))
+
+    # --- Feedback Mechanism in its own tab ---
     with tab5:
         st.subheader("Was this analysis helpful?")
         if res.get("feedback") is None:
@@ -287,19 +249,23 @@ else:
                     elif feedback == "error":
                         st.error("⚠️ Error Reported")
                     else:
-                        st.write("")
+                        st.write("") # Keep alignment
             with col3:
+                # Use two columns within the third for side-by-side buttons
                 b_col1, b_col2 = st.columns(2)
                 if status == "complete" or status == "error":
                     if b_col1.button("👁️ View", key=f"view_{i}", use_container_width=True):
                         st.session_state.current_analysis_index = i
-                        st.session_state.show_feedback_box = False
+                        st.session_state.show_feedback_box = False # Reset feedback box state
                         st.rerun()
+                # NEW: Delete button
                 if b_col2.button("🗑️ Delete", key=f"del_{i}", use_container_width=True):
+                    # If deleting the currently viewed analysis, deselect it
                     if st.session_state.current_analysis_index == i:
                         st.session_state.current_analysis_index = None
                     st.session_state.analysis_history.pop(i)
                     st.rerun()
+
 
 # --- Footer ---
 st.markdown("---")
