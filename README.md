@@ -28,8 +28,6 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 ## Project Evolution
 
-This project has been actively developed to increase its analytical depth and explainability.
-
 **Recent Updates (July 23, 2025)**:
 
 * Added **Streamlit Community Cloud** deployment of agent.
