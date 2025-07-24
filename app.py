@@ -1,6 +1,7 @@
 import streamlit as st
 import datetime
 import re
+import locale
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from research_agent import ResearchAgent
@@ -46,6 +47,23 @@ def parse_financial_data(data_string):
             data[key] = value
     return data
 
+# <<< NEW: Helper function to format large numbers for readability >>>
+def format_large_number(value_str):
+    """Formats a number string into a human-readable currency format (e.g., $2.5T, $100B)."""
+    if value_str is None or value_str == "N/A":
+        return "N/A"
+    try:
+        num = float(value_str)
+        if num >= 1_000_000_000_000:
+            return f"${num / 1_000_000_000_000:.2f}T"
+        elif num >= 1_000_000_000:
+            return f"${num / 1_000_000_000:.2f}B"
+        elif num >= 1_000_000:
+            return f"${num / 1_000_000:.2f}M"
+        else:
+            return f"${num:,.2f}"
+    except (ValueError, TypeError):
+        return "N/A"
 
 # --- Sidebar for Inputs and API Keys ---
 with st.sidebar:
@@ -69,7 +87,7 @@ with st.sidebar:
 @st.cache_resource
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=api_key)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     from langchain_community.tools import DuckDuckGoSearchRun
@@ -99,7 +117,6 @@ def run_full_analysis(company_name, stock_ticker):
             analysis_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
             analysis_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
 
-            # <<< CHANGE: Pass the company_name to the summary generation method >>>
             analysis_results["final_summary"] = research_agent.generate_final_summary(
                 company_name,
                 analysis_results["market_outlook"].get('answer', ''),
@@ -154,17 +171,37 @@ if st.session_state.current_analysis_index is not None:
     st.subheader("Key Financial Data")
     financials = parse_financial_data(res.get("financial_data", ""))
     if financials:
+        # <<< CHANGE: Updated the entire metrics display logic for formatting and reliability >>>
         cols = st.columns(4)
-        # <<< CHANGE: Changed "Previous Close" to "Open" for better reliability >>>
-        metrics_map = {
-            "Open": "Open",
-            "Market Cap": "Market Cap",
-            "Trailing P/E": "P/E Ratio",
-            "Trailing EPS": "EPS"
-        }
-        for i, (key, display_name) in enumerate(metrics_map.items()):
-            value = financials.get(key, "N/A")
-            cols[i].metric(label=display_name, value=value)
+        
+        # Metric 1: Previous Close
+        prev_close_val = financials.get("Previous Close", "N/A")
+        try:
+            prev_close_str = f"${float(prev_close_val):.2f}"
+        except (ValueError, TypeError):
+            prev_close_str = "N/A"
+        cols[0].metric(label="Previous Close", value=prev_close_str)
+        
+        # Metric 2: Market Cap
+        market_cap_val = financials.get("Market Cap", "N/A")
+        cols[1].metric(label="Market Cap", value=format_large_number(market_cap_val))
+
+        # Metric 3: P/E Ratio
+        pe_ratio_val = financials.get("Trailing P/E", "N/A")
+        try:
+            pe_ratio_str = f"{float(pe_ratio_val):.2f}"
+        except (ValueError, TypeError):
+            pe_ratio_str = "N/A"
+        cols[2].metric(label="P/E Ratio", value=pe_ratio_str)
+        
+        # Metric 4: EPS
+        eps_val = financials.get("Trailing EPS", "N/A")
+        try:
+            eps_str = f"{float(eps_val):.2f}"
+        except (ValueError, TypeError):
+            eps_str = "N/A"
+        cols[3].metric(label="EPS", value=eps_str)
+
     else:
         st.info("Financial data could not be retrieved.")
 
