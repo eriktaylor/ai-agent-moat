@@ -20,11 +20,22 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
+## Live Demo (Streamlit)
+The application is deployed and publicly available on Streamlit Community Cloud.
+
+[Click here to try the Live Application!](https://ai-agent-moat-my2qtkvamd8fckwyznqfky.streamlit.app/)
+
+* Note: using **DuckDuckGo (duckduckgo-search)** instead of Google Custom Search API.
+
 ## Project Evolution
 
 This project has been actively developed to increase its analytical depth and explainability.
 
-**Initial Commit (July 16, 2025)**: Core RAG pipeline and multi-persona analysis (Market and Value investors).
+**Recent Updates (July 23, 2025)**:
+
+* Added **Streamlit Community Cloud** deployment of agent.
+
+* Switched to **DuckDuckGo search** for initial research.
 
 **Recent Updates (July 21, 2025)**:
 
@@ -33,6 +44,9 @@ This project has been actively developed to increase its analytical depth and ex
 * Implemented a **final consensus agent** that synthesizes the different persona outputs into a single, actionable rating.
 
 * Integrated **RAG source citations** with publication dates (where available), making the agent's analysis auditable and explainable.
+
+**Initial Commit (July 16, 2025)**: Core RAG pipeline and multi-persona analysis (Market and Value investors).
+
 
 ## Example Analysis
 
@@ -57,7 +71,8 @@ This example demonstrates the agent's ability to perform a specific type of anal
 > 3. How is deepseek bearish for nvda : r/wallstreetbets
 > 4. EYE ON THE MARKET • MICHAEL CEMBALEST • JP MORGAN ...
 
-## Technology Stack
+
+## Technology Stack (Google Colab Demo)
 
 * **LLM:** Google Gemini 2.5 Flash
 * **Agent Framework:** LangChain
