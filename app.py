@@ -37,7 +37,6 @@ def parse_financial_data(data_string):
     data = {}
     if not isinstance(data_string, str):
         return data
-    # Regex to capture key-value pairs, handling potential spaces and colons
     pattern = re.compile(r"([^:]+):\s*(.*)")
     for line in data_string.split('\n'):
         match = pattern.match(line)
@@ -100,7 +99,9 @@ def run_full_analysis(company_name, stock_ticker):
             analysis_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
             analysis_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
 
+            # <<< CHANGE: Pass the company_name to the summary generation method >>>
             analysis_results["final_summary"] = research_agent.generate_final_summary(
+                company_name,
                 analysis_results["market_outlook"].get('answer', ''),
                 analysis_results["value_analysis"].get('answer', ''),
                 analysis_results["devils_advocate"].get('answer', '')
@@ -114,7 +115,6 @@ def run_full_analysis(company_name, stock_ticker):
 
 # --- UI Display Logic ---
 
-# When "Run New Analysis" is clicked, add a pending placeholder and rerun
 if run_button:
     if not google_api_key:
         st.error("Please enter your Google Gemini API Key in the sidebar to proceed.")
@@ -128,10 +128,9 @@ if run_button:
             "status": "pending"
         }
         st.session_state.analysis_history.insert(0, placeholder)
-        st.session_state.current_analysis_index = 0 # Immediately view the new one
+        st.session_state.current_analysis_index = 0
         st.rerun()
 
-# Check if there is a pending analysis to be run
 pending_analysis_index = next((i for i, an in enumerate(st.session_state.analysis_history) if an.get("status") == "pending"), None)
 
 if pending_analysis_index is not None:
@@ -148,17 +147,17 @@ if st.session_state.current_analysis_index is not None:
 
     if res.get("status") == "pending":
         st.info("⏳ Analysis is running...")
-        st.stop() # Stop further rendering until the analysis is done
+        st.stop()
 
     st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})", divider="rainbow")
 
-    # --- NEW: Display Key Financials as Metrics ---
     st.subheader("Key Financial Data")
     financials = parse_financial_data(res.get("financial_data", ""))
     if financials:
         cols = st.columns(4)
+        # <<< CHANGE: Changed "Previous Close" to "Open" for better reliability >>>
         metrics_map = {
-            "Previous Close": "Previous Close",
+            "Open": "Open",
             "Market Cap": "Market Cap",
             "Trailing P/E": "P/E Ratio",
             "Trailing EPS": "EPS"
@@ -169,25 +168,18 @@ if st.session_state.current_analysis_index is not None:
     else:
         st.info("Financial data could not be retrieved.")
 
-
-    # --- NEW: Use Tabs for Cleaner Layout ---
     tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "Final Summary", "Market Outlook", "Value Analysis", "Devil's Advocate", "Feedback"
     ])
 
     with tab1:
         display_analysis("Final Consensus Summary", res['company_name'], res.get("final_summary", "Not available"), is_summary=True)
-
     with tab2:
         display_analysis("AI-Generated Market Investor Outlook", res['company_name'], res.get("market_outlook", {}))
-
     with tab3:
         display_analysis("AI-Generated Value Investor Analysis", res['company_name'], res.get("value_analysis", {}))
-
     with tab4:
         display_analysis("AI-Generated Devil's Advocate View", res['company_name'], res.get("devils_advocate", {}))
-
-    # --- Feedback Mechanism in its own tab ---
     with tab5:
         st.subheader("Was this analysis helpful?")
         if res.get("feedback") is None:
@@ -249,23 +241,19 @@ else:
                     elif feedback == "error":
                         st.error("⚠️ Error Reported")
                     else:
-                        st.write("") # Keep alignment
+                        st.write("")
             with col3:
-                # Use two columns within the third for side-by-side buttons
                 b_col1, b_col2 = st.columns(2)
                 if status == "complete" or status == "error":
                     if b_col1.button("👁️ View", key=f"view_{i}", use_container_width=True):
                         st.session_state.current_analysis_index = i
-                        st.session_state.show_feedback_box = False # Reset feedback box state
+                        st.session_state.show_feedback_box = False
                         st.rerun()
-                # NEW: Delete button
                 if b_col2.button("🗑️ Delete", key=f"del_{i}", use_container_width=True):
-                    # If deleting the currently viewed analysis, deselect it
                     if st.session_state.current_analysis_index == i:
                         st.session_state.current_analysis_index = None
                     st.session_state.analysis_history.pop(i)
                     st.rerun()
-
 
 # --- Footer ---
 st.markdown("---")
