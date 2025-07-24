@@ -10,3 +10,4 @@ transformers
 sentence-transformers
 PyMuPDF
 duckduckgo-search
+streamlit-extras
