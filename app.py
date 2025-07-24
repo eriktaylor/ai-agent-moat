@@ -23,11 +23,10 @@ To begin, please enter your Google Gemini API key in the sidebar.
 """)
 
 # --- Session State Initialization ---
-# This is crucial for making the app feel persistent.
 if 'analysis_history' not in st.session_state:
     st.session_state.analysis_history = []
-if 'current_analysis' not in st.session_state:
-    st.session_state.current_analysis = None
+if 'current_analysis_index' not in st.session_state:
+    st.session_state.current_analysis_index = None
 
 # --- Sidebar for Inputs and API Keys ---
 st.sidebar.header("Configuration")
@@ -49,39 +48,28 @@ run_button = st.sidebar.button("Run New Analysis")
 # --- Agent Initialization (Cached) ---
 @st.cache_resource
 def initialize_agent(api_key):
-    """
-    Initializes the research agent and its components.
-    This is cached to avoid re-loading models on every run.
-    """
     llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=api_key)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     
-    search_tool = st.secrets.get("SEARCH_TOOL", "duckduckgo") # Default to duckduckgo if not specified
-    if search_tool == "google":
-        # In a real app, you might have a selector for different search tools
-        from langchain_community.utilities import GoogleSearchAPIWrapper
-        search_tool_instance = GoogleSearchAPIWrapper(google_cse_id=st.secrets["GOOGLE_CSE_ID"], google_api_key=api_key)
-    else:
-        from langchain_community.tools import DuckDuckGoSearchRun
-        search_tool_instance = DuckDuckGoSearchRun()
+    from langchain_community.tools import DuckDuckGoSearchRun
+    search_tool = DuckDuckGoSearchRun()
 
-    return ResearchAgent(llm=llm, embeddings_model=embeddings, search_tool=search_tool_instance)
+    return ResearchAgent(llm=llm, embeddings_model=embeddings, search_tool=search_tool)
 
 # --- Main Application Logic ---
 
-# Function to run the full analysis
 def run_full_analysis(company_name, stock_ticker):
     with st.spinner("Agent is conducting research... This may take a moment."):
         try:
             research_agent = initialize_agent(google_api_key)
             
-            # This dictionary will hold all the results
             analysis_results = {
                 "company_name": company_name,
                 "stock_ticker": stock_ticker,
                 "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "error": False,
-                "feedback": None
+                "feedback": None,
+                "detailed_feedback": None
             }
 
             analysis_results["financial_data"] = get_stock_info.run(stock_ticker)
@@ -95,14 +83,13 @@ def run_full_analysis(company_name, stock_ticker):
                 analysis_results["devils_advocate"].get('answer', '')
             )
             
-            st.session_state.current_analysis = analysis_results
-            # Add a summary to the history
-            history_summary = {k: analysis_results[k] for k in ('company_name', 'stock_ticker', 'date', 'final_summary')}
-            st.session_state.analysis_history.insert(0, history_summary) # Insert at the beginning
+            # Add the full analysis to the history and set it as the current one
+            st.session_state.analysis_history.insert(0, analysis_results)
+            st.session_state.current_analysis_index = 0
 
         except Exception as e:
             st.error(f"An error occurred during the analysis: {e}")
-            st.session_state.current_analysis = {"error": True}
+            st.session_state.current_analysis_index = None
 
 
 # --- UI Display ---
@@ -113,19 +100,25 @@ if not st.session_state.analysis_history:
     st.info("No previous analyses to display. Run a new analysis to get started.")
 else:
     for i, analysis in enumerate(st.session_state.analysis_history):
-        col1, col2, col3 = st.columns([2, 2, 1])
+        col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
         with col1:
             st.write(f"**{analysis['company_name']} ({analysis['stock_ticker']})**")
         with col2:
             st.write(f"_{analysis['date']}_")
         with col3:
+            # <<< CHANGE: Display feedback status >>>
+            feedback = analysis.get("feedback")
+            if feedback == "upvoted":
+                st.success("👍 Liked")
+            elif feedback == "downvoted":
+                st.warning("👎 Disliked")
+            elif feedback == "error":
+                st.error("⚠️ Error")
+
+        with col4:
+            # <<< CHANGE: View button now sets the index to display cached results >>>
             if st.button("View", key=f"view_{i}"):
-                # Find the full analysis in the agent's cache to display
-                full_analysis_key = f"context_{analysis['company_name']}_{analysis['stock_ticker']}"
-                # This part is a bit tricky without a proper database, we'll re-run for the demo
-                # In a real app, you'd fetch the full saved report from a DB
-                st.session_state.current_analysis = None # Clear current to force re-display
-                run_full_analysis(analysis['company_name'], analysis['stock_ticker'])
+                st.session_state.current_analysis_index = i
                 st.rerun()
 
 
@@ -136,13 +129,13 @@ if run_button:
     elif not company_name_input or not stock_ticker_input:
         st.error("Please enter a company name and stock ticker.")
     else:
-        st.session_state.current_analysis = None # Clear previous analysis
+        st.session_state.current_analysis_index = None # Clear previous analysis view
         run_full_analysis(company_name_input, stock_ticker_input)
         st.rerun()
 
-# This block ensures the analysis stays on screen after it's run
-if st.session_state.current_analysis and not st.session_state.current_analysis.get("error"):
-    res = st.session_state.current_analysis
+# This block ensures the analysis stays on screen after it's run or when "View" is clicked
+if st.session_state.current_analysis_index is not None:
+    res = st.session_state.analysis_history[st.session_state.current_analysis_index]
     
     st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})")
     
@@ -178,10 +171,7 @@ if st.session_state.current_analysis and not st.session_state.current_analysis.g
         if col3.button("⚠️ Report Error"):
             res["feedback"] = "error"
             print(f"ERROR REPORTED for {res['company_name']}")
-            # Remove the errored analysis from history
-            st.session_state.analysis_history = [h for h in st.session_state.analysis_history if h['date'] != res['date']]
-            st.error("Thank you for reporting an error. This analysis has been removed from the history.")
-            st.session_state.current_analysis = None
+            st.error("Thank you for reporting an error. This analysis has been marked.")
             st.rerun()
 
         if st.session_state.get('show_feedback_box', False):
