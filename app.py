@@ -135,55 +135,57 @@ if run_button:
 
 # This block ensures the analysis stays on screen after it's run or when "View" is clicked
 if st.session_state.current_analysis_index is not None:
-    res = st.session_state.analysis_history[st.session_state.current_analysis_index]
-    
-    st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})")
-    
-    st.subheader("1. Key Financial Data")
-    st.text(res["financial_data"])
-
-    display_analysis("2. AI-GENERATED MARKET INVESTOR OUTLOOK", res['company_name'], res["market_outlook"])
-    display_analysis("3. AI-GENERATED VALUE INVESTOR ANALYSIS", res['company_name'], res["value_analysis"])
-    display_analysis("4. AI-GENERATED DEVIL'S ADVOCATE VIEW", res['company_name'], res["devils_advocate"])
-    display_analysis("5. FINAL CONSENSUS SUMMARY", res['company_name'], res["final_summary"], is_summary=True)
-
-    # --- Feedback Mechanism ---
-    st.markdown("---")
-    st.subheader("Feedback")
-
-    if res.get("feedback") is None:
-        st.write("Was this analysis helpful?")
-        col1, col2, col3, col4 = st.columns(4)
+    # Ensure the index is valid
+    if st.session_state.current_analysis_index < len(st.session_state.analysis_history):
+        res = st.session_state.analysis_history[st.session_state.current_analysis_index]
         
-        if col1.button("👍 Upvote"):
-            res["feedback"] = "upvoted"
-            print(f"Feedback for {res['company_name']}: Upvoted")
-            st.success("Thanks for your feedback!")
-            st.rerun()
+        st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})")
+        
+        st.subheader("1. Key Financial Data")
+        st.text(res["financial_data"])
 
-        if col2.button("👎 Downvote"):
-            res["feedback"] = "downvoted"
-            print(f"Feedback for {res['company_name']}: Downvoted")
-            st.warning("Thanks for your feedback! Please provide more details below.")
-            st.session_state.show_feedback_box = True
-            st.rerun()
+        display_analysis("2. AI-GENERATED MARKET INVESTOR OUTLOOK", res['company_name'], res["market_outlook"])
+        display_analysis("3. AI-GENERATED VALUE INVESTOR ANALYSIS", res['company_name'], res["value_analysis"])
+        display_analysis("4. AI-GENERATED DEVIL'S ADVOCATE VIEW", res['company_name'], res["devils_advocate"])
+        display_analysis("5. FINAL CONSENSUS SUMMARY", res['company_name'], res["final_summary"], is_summary=True)
 
-        if col3.button("⚠️ Report Error"):
-            res["feedback"] = "error"
-            print(f"ERROR REPORTED for {res['company_name']}")
-            st.error("Thank you for reporting an error. This analysis has been marked.")
-            st.rerun()
+        # --- Feedback Mechanism ---
+        st.markdown("---")
+        st.subheader("Feedback")
 
-        if st.session_state.get('show_feedback_box', False):
-            feedback_text = st.text_area("What could be improved?")
-            if st.button("Submit Detailed Feedback"):
-                res["detailed_feedback"] = feedback_text
-                print(f"Detailed feedback for {res['company_name']}: {feedback_text}")
-                st.success("Your detailed feedback has been submitted. Thank you!")
-                st.session_state.show_feedback_box = False
+        if res.get("feedback") is None:
+            st.write("Was this analysis helpful?")
+            col1, col2, col3, col4 = st.columns(4)
+            
+            if col1.button("👍 Upvote"):
+                res["feedback"] = "upvoted"
+                print(f"Feedback for {res['company_name']}: Upvoted")
+                st.success("Thanks for your feedback!")
                 st.rerun()
-    else:
-        st.info("Thank you for your feedback on this report!")
+
+            if col2.button("👎 Downvote"):
+                res["feedback"] = "downvoted"
+                print(f"Feedback for {res['company_name']}: Downvoted")
+                st.warning("Thanks for your feedback! Please provide more details below.")
+                st.session_state.show_feedback_box = True
+                st.rerun()
+
+            if col3.button("⚠️ Report Error"):
+                res["feedback"] = "error"
+                print(f"ERROR REPORTED for {res['company_name']}")
+                st.error("Thank you for reporting an error. This analysis has been marked.")
+                st.rerun()
+
+            if st.session_state.get('show_feedback_box', False):
+                feedback_text = st.text_area("What could be improved?")
+                if st.button("Submit Detailed Feedback"):
+                    res["detailed_feedback"] = feedback_text
+                    print(f"Detailed feedback for {res['company_name']}: {feedback_text}")
+                    st.success("Your detailed feedback has been submitted. Thank you!")
+                    st.session_state.show_feedback_box = False
+                    st.rerun()
+        else:
+            st.info("Thank you for your feedback on this report!")
 
 # --- Footer ---
 st.markdown("---")
