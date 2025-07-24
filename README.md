@@ -26,6 +26,8 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 [Click here to try the Live Application!](https://ai-agent-moat-my2qtkvamd8fckwyznqfky.streamlit.app/)
 
+---
+
 ## Project Evolution
 
 **Most Recent Update (July 23, 2025)**:
