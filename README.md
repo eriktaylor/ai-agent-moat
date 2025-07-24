@@ -21,11 +21,10 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
 ## Live Demo (Streamlit)
+
 The application is deployed and publicly available on Streamlit Community Cloud.
 
 [Click here to try the Live Application!](https://ai-agent-moat-my2qtkvamd8fckwyznqfky.streamlit.app/)
-
-Note: This demo is using **DuckDuckGo (duckduckgo-search)** instead of Google Custom Search API.
 
 ## Project Evolution
 
@@ -35,7 +34,7 @@ This project has been actively developed to increase its analytical depth and ex
 
 * Added **Streamlit Community Cloud** deployment of agent.
 
-* Switched to **DuckDuckGo search** for initial research.
+* Switched to **DuckDuckGo search** for initial research on Streamlit application.
 
 **Recent Updates (July 21, 2025)**:
 
