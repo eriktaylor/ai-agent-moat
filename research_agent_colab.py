@@ -10,7 +10,7 @@ import os
 from operator import itemgetter
 
 # Import the tools this agent will use
-from tools import get_stock_info, scrape_website
+from tools_colab import get_stock_info, scrape_website
 
 class ResearchAgent:
     def __init__(self, llm, embeddings_model):
