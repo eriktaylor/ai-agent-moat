@@ -15,7 +15,7 @@ st.set_page_config(
 )
 
 # --- App Title and Description ---
-st.title("🤖 AI Agent for Financial Moat Analysis")
+st.title("AI Agent for Financial Moat Analysis")
 st.markdown("""
 Welcome to the interactive demo of the AI Financial Analyst Agent.
 This tool automates investment research by analyzing a company's competitive advantages, or "moat."
