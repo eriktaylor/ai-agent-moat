@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # --- App Title and Description ---
-st.title("AI Agent for Financial Moat Analysis")
+st.title("🤖 AI Agent for Financial Moat Analysis")
 st.markdown("""
 Welcome to the interactive demo of the AI Financial Analyst Agent.
 This tool automates investment research by analyzing a company's competitive advantages, or "moat."
@@ -47,7 +47,6 @@ def parse_financial_data(data_string):
             data[key] = value
     return data
 
-# <<< NEW: Helper function to format large numbers for readability >>>
 def format_large_number(value_str):
     """Formats a number string into a human-readable currency format (e.g., $2.5T, $100B)."""
     if value_str is None or value_str == "N/A":
@@ -64,6 +63,15 @@ def format_large_number(value_str):
             return f"${num:,.2f}"
     except (ValueError, TypeError):
         return "N/A"
+
+# <<< NEW: Helper function to find the first available value from a list of keys >>>
+def get_first_available_value(data_dict, keys_to_try):
+    """Iterates through a list of keys and returns the first found value."""
+    for key in keys_to_try:
+        if key in data_dict and data_dict[key] not in [None, "N/A"]:
+            return data_dict[key]
+    return "N/A"
+
 
 # --- Sidebar for Inputs and API Keys ---
 with st.sidebar:
@@ -171,16 +179,17 @@ if st.session_state.current_analysis_index is not None:
     st.subheader("Key Financial Data")
     financials = parse_financial_data(res.get("financial_data", ""))
     if financials:
-        # <<< CHANGE: Updated the entire metrics display logic for formatting and reliability >>>
         cols = st.columns(4)
         
-        # Metric 1: Previous Close
-        prev_close_val = financials.get("Previous Close", "N/A")
+        # <<< CHANGE: Implemented fallback logic for the price metric >>>
+        # Metric 1: Current Price (with fallback)
+        price_keys_to_try = ["Regular Market Price", "Current Price", "Previous Close", "Open"]
+        price_val = get_first_available_value(financials, price_keys_to_try)
         try:
-            prev_close_str = f"${float(prev_close_val):.2f}"
+            price_str = f"${float(price_val):.2f}"
         except (ValueError, TypeError):
-            prev_close_str = "N/A"
-        cols[0].metric(label="Previous Close", value=prev_close_str)
+            price_str = "N/A"
+        cols[0].metric(label="Current Price", value=price_str)
         
         # Metric 2: Market Cap
         market_cap_val = financials.get("Market Cap", "N/A")
