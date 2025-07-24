@@ -151,26 +151,25 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
 
-    # <<< CHANGE: This function has been rewritten to reliably inject the company name >>>
+    # <<< CHANGE: This function now uses a standard LangChain prompt template with multiple input variables >>>
     def generate_final_summary(self, entity_name, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
         
-        # Create the full context string with all the prior analysis
         combined_analysis = (
             f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
         
-        # Create the system prompt, directly embedding the entity_name using an f-string.
-        # This ensures the company name is always included in the prompt sent to the LLM.
+        # Define a template that explicitly expects 'entity_name' and 'analysis_context' as variables.
+        # This is a more robust way to ensure all information is passed to the LLM.
         system_prompt_template = (
-            f"You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
+            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
             "You have been provided with three reports below, which constitute the analysis context. "
             "Your task is to synthesize these three perspectives into a final, balanced summary. "
             "Your response MUST be structured with the following sections:\n"
-            f"1. **Consensus Rating:** Provide a single rating for {entity_name}: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
-            f"2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}.\n\n"
+            "1. **Consensus Rating:** Provide a single rating for {entity_name}: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}.\n\n"
             "--- ANALYSIS CONTEXT ---\n"
             "{analysis_context}"
         )
@@ -179,6 +178,9 @@ class ResearchAgent:
         
         chain = prompt | self.llm
         
-        # The invoke call now only needs to pass the combined analysis to the 'analysis_context' variable.
-        response = chain.invoke({"analysis_context": combined_analysis})
+        # Invoke the chain, passing a dictionary with keys that match the variables in the template.
+        response = chain.invoke({
+            "entity_name": entity_name,
+            "analysis_context": combined_analysis
+        })
         return response.content
