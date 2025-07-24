@@ -12,7 +12,6 @@ from operator import itemgetter
 from tools import get_stock_info, scrape_website
 
 class ResearchAgent:
-    # <<< CHANGE: The constructor now accepts a search_tool object >>>
     def __init__(self, llm, embeddings_model, search_tool):
         self.llm = llm
         self.embeddings_model = embeddings_model
@@ -25,7 +24,6 @@ class ResearchAgent:
         print("Cache cleared.")
         self.cache = {}
 
-    # <<< CHANGE: This method is now re-written to use the DuckDuckGo search tool >>>
     def _get_context(self, entity_name, ticker):
         """Gathers context and returns financial data and a list of source documents."""
         context_cache_key = f"context_{entity_name}_{ticker}"
@@ -43,7 +41,6 @@ class ResearchAgent:
 
         source_documents = []
         
-        # Define the search queries for each tier
         queries = {
             "Official News & Analysis": f'"{entity_name}" recent news',
             "Critical News & Sentiment": f'\"{entity_name}\" issues OR concerns OR investigation OR recall OR safety OR "short interest"',
@@ -154,26 +151,31 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
 
-    def generate_final_summary(self, market_outlook, value_analysis, devils_advocate):
+    # <<< CHANGE: This method now accepts entity_name to inject into the prompt >>>
+    def generate_final_summary(self, entity_name, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
         
+        # <<< CHANGE: The input to the chain now includes the entity_name >>>
         combined_analysis = (
+            f"COMPANY BEING ANALYZED: {entity_name}\n\n"
             f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
         
+        # <<< CHANGE: The prompt is now an f-string that uses the entity_name >>>
         system_prompt = (
-            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating. "
+            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
             "You have been provided with three reports: a Market Investor's outlook, a Value Investor's analysis, and a Devil's Advocate's critique. "
-            "Your task is to synthesize these three perspectives into a final, balanced summary. "
+            "Your task is to synthesize these three perspectives into a final, balanced summary for {entity_name}. "
             "Your response MUST be structured with the following sections:\n"
             "1. **Consensus Rating:** Provide a single rating: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
-            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives."
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}."
         )
         
         prompt = ChatPromptTemplate.from_template(system_prompt)
         
         chain = prompt | self.llm
-        response = chain.invoke({"input": combined_analysis})
+        # Pass the combined analysis and the entity name to the chain
+        response = chain.invoke({"input": combined_analysis, "entity_name": entity_name})
         return response.content
