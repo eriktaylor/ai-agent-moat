@@ -49,19 +49,27 @@ class ResearchAgent:
 
         for tier, query in queries.items():
             print(f"--- Searching for: {tier} ---")
-            search_result_text = self.search_tool.run(query)
-            
-            if search_result_text and "No good search result found" not in search_result_text:
-                doc = Document(
-                    page_content=search_result_text,
-                    metadata={
-                        "source": "DuckDuckGo Search", 
-                        "title": f"{tier} for {entity_name}",
-                        "published": "N/A"
-                    }
-                )
-                source_documents.append(doc)
-                print(f"Collected results for {tier}.")
+            # <<< BUG FIX: Wrapped web search in a try/except block for resilience >>>
+            try:
+                search_result_text = self.search_tool.run(query)
+                
+                if search_result_text and "No good search result found" not in search_result_text:
+                    doc = Document(
+                        page_content=search_result_text,
+                        metadata={
+                            "source": "DuckDuckGo Search", 
+                            "title": f"{tier} for {entity_name}",
+                            "published": "N/A"
+                        }
+                    )
+                    source_documents.append(doc)
+                    print(f"Collected results for {tier}.")
+                else:
+                    print(f"No good search results for {tier}.")
+            except Exception as e:
+                print(f"An error occurred during web search for tier '{tier}': {e}")
+                # Continue to the next query even if one fails
+                continue
         
         self.cache[context_cache_key] = (financial_data, source_documents)
         return financial_data, source_documents
@@ -99,7 +107,7 @@ class ResearchAgent:
     def _run_analysis(self, entity_name, ticker, system_prompt, query_input):
         financial_data, source_documents = self._get_context(entity_name, ticker)
         if not source_documents:
-            return {"answer": "Could not gather context for analysis.", "sources": []}
+            return {"answer": "Could not gather sufficient web context for analysis. Please try again.", "sources": []}
 
         rag_chain = self._create_rag_chain(system_prompt, source_documents)
         
@@ -151,29 +159,32 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
 
-    # <<< CHANGE: This function has been rewritten to be more direct and foolproof >>>
     def generate_final_summary(self, entity_name, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
         
-        # Combine the previous analysis sections into a single block of text.
         combined_analysis = (
             f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
         
-        # Directly format the final prompt using an f-string. This is the most reliable
-        # method to ensure the company name is included in the prompt sent to the LLM.
-        final_prompt = (
-            f"You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
-            f"You have been provided with three reports below. Your task is to synthesize these three perspectives into a final, balanced summary for {entity_name}.\n\n"
+        system_prompt_template = (
+            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
+            "You have been provided with three reports below, which constitute the analysis context. "
+            "Your task is to synthesize these three perspectives into a final, balanced summary. "
             "Your response MUST be structured with the following sections:\n"
-            f"1. **Consensus Rating:** Provide a single rating for {entity_name}: **Bullish**, **Bearish**, or **Neutral with Caution**.\n"
-            f"2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}.\n\n"
+            "1. **Consensus Rating:** Provide a single rating for {entity_name}: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}.\n\n"
             "--- ANALYSIS CONTEXT ---\n"
-            f"{combined_analysis}"
+            "{analysis_context}"
         )
         
-        # The chain is now simpler: just the LLM call.
-        response = self.llm.invoke(final_prompt)
+        prompt = ChatPromptTemplate.from_template(system_prompt_template)
+        
+        chain = prompt | self.llm
+        
+        response = chain.invoke({
+            "entity_name": entity_name,
+            "analysis_context": combined_analysis
+        })
         return response.content
