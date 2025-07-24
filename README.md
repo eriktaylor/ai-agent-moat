@@ -25,7 +25,7 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 [Click here to try the Live Application!](https://ai-agent-moat-my2qtkvamd8fckwyznqfky.streamlit.app/)
 
-* Note: using **DuckDuckGo (duckduckgo-search)** instead of Google Custom Search API.
+Note: This demo is using **DuckDuckGo (duckduckgo-search)** instead of Google Custom Search API.
 
 ## Project Evolution
 
