@@ -16,7 +16,7 @@ st.set_page_config(
 )
 
 # --- App Title and Description ---
-st.title("AI Agent for Financial Moat Analysis")
+st.title("🤖 AI Agent for Financial Moat Analysis")
 st.markdown("""
 Welcome to the interactive demo of the AI Financial Analyst Agent.
 This tool automates investment research by analyzing a company's competitive advantages, or "moat."
@@ -85,8 +85,8 @@ with st.sidebar:
 
     st.markdown("---")
     st.header("▶️ Run New Analysis")
-    company_name_input = st.text_input("Enter Company Name", "Boeing")
-    stock_ticker_input = st.text_input("Enter Stock Ticker", "BA")
+    company_name_input = st.text_input("Enter Company Name", "Apple")
+    stock_ticker_input = st.text_input("Enter Stock Ticker", "AAPL")
 
     run_button = st.button("Run New Analysis", use_container_width=True, type="primary")
 
@@ -136,7 +136,7 @@ def run_full_analysis(company_name, stock_ticker):
             base_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
             base_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
             
-            # <<< BUG FIX: Added company_name as the first argument to the function call >>>
+            # <<< BUG FIX: Correctly passing company_name as the first argument >>>
             base_results["final_summary"] = research_agent.generate_final_summary(
                 company_name,
                 base_results["market_outlook"].get('answer', ''),
