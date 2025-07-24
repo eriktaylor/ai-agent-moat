@@ -58,41 +58,66 @@ def initialize_agent(api_key):
 
 # --- Main Application Logic ---
 
+# <<< CHANGE: This function now returns the full analysis dictionary >>>
 def run_full_analysis(company_name, stock_ticker):
-    with st.spinner("Agent is conducting research... This may take a moment."):
-        try:
-            research_agent = initialize_agent(google_api_key)
-            
-            analysis_results = {
-                "company_name": company_name,
-                "stock_ticker": stock_ticker,
-                "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                "error": False,
-                "feedback": None,
-                "detailed_feedback": None
-            }
+    try:
+        research_agent = initialize_agent(google_api_key)
+        
+        analysis_results = {
+            "company_name": company_name,
+            "stock_ticker": stock_ticker,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "complete", # Mark as complete
+            "error": False,
+            "feedback": None,
+            "detailed_feedback": None
+        }
 
-            analysis_results["financial_data"] = get_stock_info.run(stock_ticker)
-            analysis_results["market_outlook"] = research_agent.generate_market_outlook(company_name, stock_ticker)
-            analysis_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
-            analysis_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
-            
-            analysis_results["final_summary"] = research_agent.generate_final_summary(
-                analysis_results["market_outlook"].get('answer', ''),
-                analysis_results["value_analysis"].get('answer', ''),
-                analysis_results["devils_advocate"].get('answer', '')
-            )
-            
-            # Add the full analysis to the history and set it as the current one
-            st.session_state.analysis_history.insert(0, analysis_results)
-            st.session_state.current_analysis_index = 0
+        analysis_results["financial_data"] = get_stock_info.run(stock_ticker)
+        analysis_results["market_outlook"] = research_agent.generate_market_outlook(company_name, stock_ticker)
+        analysis_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
+        analysis_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
+        
+        analysis_results["final_summary"] = research_agent.generate_final_summary(
+            analysis_results["market_outlook"].get('answer', ''),
+            analysis_results["value_analysis"].get('answer', ''),
+            analysis_results["devils_advocate"].get('answer', '')
+        )
+        return analysis_results
 
-        except Exception as e:
-            st.error(f"An error occurred during the analysis: {e}")
-            st.session_state.current_analysis_index = None
-
+    except Exception as e:
+        st.error(f"An error occurred during the analysis: {e}")
+        return {"error": True, "status": "error"}
 
 # --- UI Display ---
+
+# When "Run New Analysis" is clicked, add a pending placeholder and rerun
+if run_button:
+    if not google_api_key:
+        st.error("Please enter your Google Gemini API Key in the sidebar to proceed.")
+    elif not company_name_input or not stock_ticker_input:
+        st.error("Please enter a company name and stock ticker.")
+    else:
+        placeholder = {
+            "company_name": company_name_input,
+            "stock_ticker": stock_ticker_input,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "status": "pending"
+        }
+        st.session_state.analysis_history.insert(0, placeholder)
+        st.session_state.current_analysis_index = None # Deselect any current view
+        st.rerun()
+
+# Check if there is a pending analysis to be run
+pending_analysis_index = next((i for i, an in enumerate(st.session_state.analysis_history) if an.get("status") == "pending"), None)
+
+if pending_analysis_index is not None:
+    pending_info = st.session_state.analysis_history[pending_analysis_index]
+    full_results = run_full_analysis(pending_info["company_name"], pending_info["stock_ticker"])
+    st.session_state.analysis_history[pending_analysis_index] = full_results
+    st.session_state.current_analysis_index = pending_analysis_index
+    st.rerun()
+
 
 # 1. Previous Analyses Section
 st.header("Previous Analyses")
@@ -100,92 +125,80 @@ if not st.session_state.analysis_history:
     st.info("No previous analyses to display. Run a new analysis to get started.")
 else:
     for i, analysis in enumerate(st.session_state.analysis_history):
-        col1, col2, col3, col4 = st.columns([3, 2, 1, 1])
+        col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
         with col1:
             st.write(f"**{analysis['company_name']} ({analysis['stock_ticker']})**")
         with col2:
             st.write(f"_{analysis['date']}_")
         with col3:
-            # <<< CHANGE: Display feedback status >>>
-            feedback = analysis.get("feedback")
-            if feedback == "upvoted":
-                st.success("👍 Liked")
-            elif feedback == "downvoted":
-                st.warning("👎 Disliked")
-            elif feedback == "error":
-                st.error("⚠️ Error")
+            if analysis.get("status") == "pending":
+                st.info("⏳ Pending...")
+            else:
+                feedback = analysis.get("feedback")
+                if feedback == "upvoted":
+                    st.success("👍 Liked")
+                elif feedback == "downvoted":
+                    st.warning("👎 Disliked")
+                elif feedback == "error":
+                    st.error("⚠️ Error Reported")
 
         with col4:
-            # <<< CHANGE: View button now sets the index to display cached results >>>
-            if st.button("View", key=f"view_{i}"):
-                st.session_state.current_analysis_index = i
-                st.rerun()
+            if analysis.get("status") == "complete":
+                if st.button("View", key=f"view_{i}"):
+                    st.session_state.current_analysis_index = i
+                    st.rerun()
 
 
 # 2. Main Analysis Section
-if run_button:
-    if not google_api_key:
-        st.error("Please enter your Google Gemini API Key in the sidebar to proceed.")
-    elif not company_name_input or not stock_ticker_input:
-        st.error("Please enter a company name and stock ticker.")
-    else:
-        st.session_state.current_analysis_index = None # Clear previous analysis view
-        run_full_analysis(company_name_input, stock_ticker_input)
-        st.rerun()
-
-# This block ensures the analysis stays on screen after it's run or when "View" is clicked
 if st.session_state.current_analysis_index is not None:
-    # Ensure the index is valid
-    if st.session_state.current_analysis_index < len(st.session_state.analysis_history):
-        res = st.session_state.analysis_history[st.session_state.current_analysis_index]
+    res = st.session_state.analysis_history[st.session_state.current_analysis_index]
+    
+    st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})")
+    st.subheader("1. Key Financial Data")
+    st.text(res["financial_data"])
+
+    display_analysis("2. AI-GENERATED MARKET INVESTOR OUTLOOK", res['company_name'], res["market_outlook"])
+    display_analysis("3. AI-GENERATED VALUE INVESTOR ANALYSIS", res['company_name'], res["value_analysis"])
+    display_analysis("4. AI-GENERATED DEVIL'S ADVOCATE VIEW", res['company_name'], res["devils_advocate"])
+    display_analysis("5. FINAL CONSENSUS SUMMARY", res['company_name'], res["final_summary"], is_summary=True)
+
+    # --- Feedback Mechanism ---
+    st.markdown("---")
+    st.subheader("Feedback")
+
+    if res.get("feedback") is None:
+        st.write("Was this analysis helpful?")
+        col1, col2, col3, col4 = st.columns(4)
         
-        st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})")
-        
-        st.subheader("1. Key Financial Data")
-        st.text(res["financial_data"])
+        if col1.button("👍 Upvote", key=f"up_{res['date']}"):
+            res["feedback"] = "upvoted"
+            print(f"Feedback for {res['company_name']}: Upvoted")
+            st.success("Thanks for your feedback!")
+            st.rerun()
 
-        display_analysis("2. AI-GENERATED MARKET INVESTOR OUTLOOK", res['company_name'], res["market_outlook"])
-        display_analysis("3. AI-GENERATED VALUE INVESTOR ANALYSIS", res['company_name'], res["value_analysis"])
-        display_analysis("4. AI-GENERATED DEVIL'S ADVOCATE VIEW", res['company_name'], res["devils_advocate"])
-        display_analysis("5. FINAL CONSENSUS SUMMARY", res['company_name'], res["final_summary"], is_summary=True)
+        if col2.button("👎 Downvote", key=f"down_{res['date']}"):
+            res["feedback"] = "downvoted"
+            print(f"Feedback for {res['company_name']}: Downvoted")
+            st.warning("Thanks for your feedback! Please provide more details below.")
+            st.session_state.show_feedback_box = True
+            st.rerun()
 
-        # --- Feedback Mechanism ---
-        st.markdown("---")
-        st.subheader("Feedback")
+        if col3.button("⚠️ Report Error", key=f"err_{res['date']}"):
+            res["feedback"] = "error"
+            print(f"ERROR REPORTED for {res['company_name']}")
+            st.error("Thank you for reporting an error. This analysis has been marked.")
+            st.rerun()
 
-        if res.get("feedback") is None:
-            st.write("Was this analysis helpful?")
-            col1, col2, col3, col4 = st.columns(4)
-            
-            if col1.button("👍 Upvote"):
-                res["feedback"] = "upvoted"
-                print(f"Feedback for {res['company_name']}: Upvoted")
-                st.success("Thanks for your feedback!")
+        if st.session_state.get('show_feedback_box', False):
+            feedback_text = st.text_area("What could be improved?")
+            if st.button("Submit Detailed Feedback"):
+                res["detailed_feedback"] = feedback_text
+                print(f"Detailed feedback for {res['company_name']}: {feedback_text}")
+                st.success("Your detailed feedback has been submitted. Thank you!")
+                st.session_state.show_feedback_box = False
                 st.rerun()
-
-            if col2.button("👎 Downvote"):
-                res["feedback"] = "downvoted"
-                print(f"Feedback for {res['company_name']}: Downvoted")
-                st.warning("Thanks for your feedback! Please provide more details below.")
-                st.session_state.show_feedback_box = True
-                st.rerun()
-
-            if col3.button("⚠️ Report Error"):
-                res["feedback"] = "error"
-                print(f"ERROR REPORTED for {res['company_name']}")
-                st.error("Thank you for reporting an error. This analysis has been marked.")
-                st.rerun()
-
-            if st.session_state.get('show_feedback_box', False):
-                feedback_text = st.text_area("What could be improved?")
-                if st.button("Submit Detailed Feedback"):
-                    res["detailed_feedback"] = feedback_text
-                    print(f"Detailed feedback for {res['company_name']}: {feedback_text}")
-                    st.success("Your detailed feedback has been submitted. Thank you!")
-                    st.session_state.show_feedback_box = False
-                    st.rerun()
-        else:
-            st.info("Thank you for your feedback on this report!")
+    else:
+        st.info("Thank you for your feedback on this report!")
 
 # --- Footer ---
 st.markdown("---")
