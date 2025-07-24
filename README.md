@@ -28,13 +28,13 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 ## Project Evolution
 
-**Recent Updates (July 23, 2025)**:
+**Most Recent Update (July 23, 2025)**:
 
 * Added **Streamlit Community Cloud** deployment of agent.
 
 * Switched to **DuckDuckGo search** for initial research on Streamlit application.
 
-**Recent Updates (July 21, 2025)**:
+**Update (July 21, 2025)**:
 
 * Added a third **"Devil's Advocate"** persona to stress-test the investment thesis and identify key risks.
 
