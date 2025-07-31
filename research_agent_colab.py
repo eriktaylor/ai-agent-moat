@@ -244,6 +244,7 @@ class ResearchAgent:
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
 
+
     def generate_final_summary(self, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
         
@@ -253,17 +254,23 @@ class ResearchAgent:
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
         
-        system_prompt = (
+        # <<< CHANGE: Added a placeholder {analysis_context} to receive the combined reports >>>
+        system_prompt_template = (
             "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating. "
-            "You have been provided with three reports: a Market Investor's outlook, a Value Investor's analysis, and a Devil's Advocate's critique. "
+            "You have been provided with three reports which constitute the analysis context. "
             "Your task is to synthesize these three perspectives into a final, balanced summary. "
             "Your response MUST be structured with the following sections:\n"
             "1. **Consensus Rating:** Provide a single rating: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
-            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives."
+            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives.\n\n"
+            "--- ANALYSIS CONTEXT ---\n"
+            "{analysis_context}" # This placeholder will be filled with the combined reports.
         )
         
-        prompt = ChatPromptTemplate.from_template(system_prompt)
+        prompt = ChatPromptTemplate.from_template(system_prompt_template)
         
         chain = prompt | self.llm
-        response = chain.invoke({"input": combined_analysis})
+        
+        # <<< CHANGE: The key in the invoke dictionary now matches the placeholder >>>
+        response = chain.invoke({"analysis_context": combined_analysis})
+        
         return response.content
