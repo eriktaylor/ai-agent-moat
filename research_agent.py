@@ -7,6 +7,7 @@ from langchain_core.documents import Document
 import re
 import os
 from operator import itemgetter
+import datetime
 
 # Import the tools this agent will use
 from tools import get_stock_info, scrape_website
@@ -40,16 +41,18 @@ class ResearchAgent:
                 print("Successfully collected financial data.")
 
         source_documents = []
-        
-        queries = {
-            "Official News & Analysis": f'"{entity_name}" recent news',
-            "Critical News & Sentiment": f'\"{entity_name}\" issues OR concerns OR investigation OR recall OR safety OR "short interest"',
-            "Retail Investor Sentiment": f'site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks OR site:seekingalpha.com OR site:fool.com "{entity_name}" OR "{ticker}"',
-        }
 
+        # --- Time-Filtering Enhancement ---
+        current_year = datetime.datetime.now().year
+
+        queries = {
+        "Official News & Analysis": f'"{entity_name}" recent news {current_year}',
+        "Critical News & Sentiment": f'\"{entity_name}\" issues OR concerns OR investigation OR recall OR safety OR "short interest" {current_year}',
+        "Retail Investor Sentiment": f'site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks OR site:seekingalpha.com OR site:fool.com "{entity_name}" OR "{ticker}" {current_year}',
+        }
         for tier, query in queries.items():
-            print(f"--- Searching for: {tier} ---")
-            # <<< BUG FIX: Wrapped web search in a try/except block for resilience >>>
+            print(f"--- Searching for: {tier} ({current_year}) ---")            
+            #print(f"--- Searching for: {tier} ---")
             try:
                 search_result_text = self.search_tool.run(query)
                 
@@ -121,22 +124,23 @@ class ResearchAgent:
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
         system_prompt = (
-            "You are a 'Market Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
+            "You are a 'Market Investor' analyst. Your goal is to analyze sentiment based on the most up-to-date information available. Prioritize the most recent news and discussions from the context provided. "
+            "Here is the key financial data for the company:\n{financial_data}\n\n"
             "Now, using the retrieved context below, generate a report. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "The report MUST be structured with the following sections:\n"
             "1. **Professional Market Sentiment:** Based on official news and critical reports, what is the professional sentiment?\n"
             "2. **Retail Investor Sentiment:** Based on 'Retail Forum' snippets, what is the general sentiment from retail investors?\n"
             "3. **Valuation Analysis:** Is the stock expensive or cheap? You MUST reference 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable, state this clearly.\n"
             "**Crucially, you MUST cite your sources for any claims made by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
-            "\n\nRetrieved Context:\n{context_formatted}\n\n"
-            "DO NOT give financial advice. This is an objective summary."
+            "\n\nRetrieved Context:\n{context_formatted}"
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Market outlook for {entity_name}")
 
     def generate_value_analysis(self, entity_name, ticker):
         print("\nGenerating Value Investor Analysis...")
         system_prompt = (
-            "You are a 'Value Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
+            "You are a 'Value Investor' analyst. Analyze the company's long-term strengths and weaknesses, prioritizing the most up-to-date information to assess its current competitive moat. "
+            "Here is the key financial data for the company:\n{financial_data}\n\n" 
             "Now, using the retrieved context below, generate a detailed business brief. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "The report MUST be structured with the following sections:\n"
             "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued', justifying your conclusion with financial data.\n"
@@ -150,7 +154,8 @@ class ResearchAgent:
     def generate_devils_advocate_view(self, entity_name, ticker):
         print("\nGenerating Devil's Advocate View...")
         system_prompt = (
-            "You are a skeptical 'Devil's Advocate' financial analyst. Your sole purpose is to challenge the bullish investment thesis. "
+            "You are a skeptical 'Devil's Advocate' financial analyst. Your sole purpose is to challenge the bullish investment thesis by identifying the most pressing and recent risks. "
+            "Prioritize information about new or developing issues from the provided context. "
             "Here is the key financial data for the company:\n{financial_data}\n\n" 
             "Now, using the retrieved context below, identify the single strongest counter-argument or hidden risk. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
             "Your response must be a concise, well-reasoned paragraph. "
