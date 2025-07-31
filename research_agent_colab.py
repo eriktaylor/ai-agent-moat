@@ -158,6 +158,31 @@ class ResearchAgent:
         
         return {"answer": response['answer'].content, "sources": response['sources']}
 
+    # Add this new method inside the ResearchAgent class in research_agent_colab.py
+
+    def generate_scout_analysis(self, entity_name, ticker):
+        """
+        Performs a quick, high-level analysis to generate a 'compelling score'.
+        This method also serves to pre-populate the search cache for the given ticker.
+        """
+        print(f"\n🕵️ Scouting {entity_name} ({ticker})...")
+        
+        # This prompt is designed for quick triage and structured JSON output.
+        system_prompt = (
+            "You are a 'Scout Analyst'. Your job is to read the following news snippets for '{input}' and determine if there is a compelling, recent story that warrants deeper analysis.\n\n"
+            "Based ONLY on the provided context below, answer in a valid JSON format with the following keys:\n"
+            "- \"positive_catalyst\": (boolean) True if a clear positive catalyst is mentioned (e.g., earnings beat, new product, upgrade).\n"
+            "- \"negative_catalyst\": (boolean) True if a clear negative event is mentioned (e.g., guidance cut, investigation, downgrade).\n"
+            "- \"news_summary\": (string) A one-sentence summary of the primary news topic.\n"
+            "- \"compelling_score\": (integer, 1-10) How compelling is this stock for immediate further research based *only* on the provided snippets? (1=boring, 10=urgent catalyst).\n\n"
+            "Retrieved Context:\n{context_formatted}\n\n"
+            "JSON Response:"
+        )
+        
+        # We reuse _run_analysis. This will automatically call _get_context, 
+        # which performs the search and caches the results for later use.
+        return self._run_analysis(entity_name, ticker, system_prompt, f"Recent news and catalysts for {entity_name}")
+    
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
         system_prompt = (
