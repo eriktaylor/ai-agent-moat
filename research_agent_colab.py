@@ -8,6 +8,7 @@ from langchain_community.utilities import GoogleSearchAPIWrapper
 import re
 import os
 from operator import itemgetter
+import json
 
 # Import the tools this agent will use
 from tools_colab import get_stock_info, scrape_website
@@ -158,30 +159,49 @@ class ResearchAgent:
         
         return {"answer": response['answer'].content, "sources": response['sources']}
 
-    # Add this new method inside the ResearchAgent class in research_agent_colab.py
-
     def generate_scout_analysis(self, entity_name, ticker):
         """
-        Performs a quick, high-level analysis to generate a 'compelling score'.
-        This method also serves to pre-populate the search cache for the given ticker.
+        Performs a lean, single-search analysis to generate a 'compelling score'
+        without exhausting the search API quota.
         """
-        print(f"\n🕵️ Scouting {entity_name} ({ticker})...")
+        print(f"🕵️ Scouting {entity_name}...")
         
-        # This prompt is designed for quick triage and structured JSON output.
-        system_prompt = (
-            "You are a 'Scout Analyst'. Your job is to read the following news snippets for '{input}' and determine if there is a compelling, recent story that warrants deeper analysis.\n\n"
-            "Based ONLY on the provided context below, answer in a valid JSON format with the following keys:\n"
-            "- \"positive_catalyst\": (boolean) True if a clear positive catalyst is mentioned (e.g., earnings beat, new product, upgrade).\n"
-            "- \"negative_catalyst\": (boolean) True if a clear negative event is mentioned (e.g., guidance cut, investigation, downgrade).\n"
-            "- \"news_summary\": (string) A one-sentence summary of the primary news topic.\n"
-            "- \"compelling_score\": (integer, 1-10) How compelling is this stock for immediate further research based *only* on the provided snippets? (1=boring, 10=urgent catalyst).\n\n"
-            "Retrieved Context:\n{context_formatted}\n\n"
-            "JSON Response:"
+        # 1. Perform a single, lightweight search for recent news.
+        try:
+            scout_query = f'"{entity_name}" ({ticker}) stock news catalyst OR outlook {pd.Timestamp.now().year}'
+            search_results = self.search_wrapper.results(scout_query, num_results=4)
+            if not search_results:
+                # Return a default "not compelling" response if no news is found
+                return {"answer": '{"news_summary": "No recent news found.", "compelling_score": 1, "positive_catalyst": false, "negative_catalyst": false}', "sources": []}
+        except Exception as e:
+            # Handle search API failure
+            return {"answer": f'{{"news_summary": "Error: Google Search API failed. ({e})", "compelling_score": 0}}', "sources": []}
+    
+        # 2. Format the context for the LLM
+        context_snippets = [f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results]
+        context_str = "\n---\n".join(context_snippets)
+    
+        # 3. Define the specific "Scout" prompt
+        scout_system_prompt = (
+            "You are a 'Scout Analyst'. Your job is to read the provided news snippets for '{entity_name}' and determine if there is a compelling, recent story. "
+            "Based ONLY on the provided context, answer in a single, valid JSON object with the following keys:\n"
+            "- \"positive_catalyst\": (boolean)\n"
+            "- \"negative_catalyst\": (boolean)\n"
+            "- \"news_summary\": (string) A one-sentence summary of the news.\n"
+            "- \"compelling_score\": (integer, 1-10 where 1 is boring and 10 is an urgent catalyst).\n\n"
+            "CONTEXT:\n---\n{context}\n---\n\nJSON Response:"
         )
+        prompt = ChatPromptTemplate.from_template(scout_system_prompt)
         
-        # We reuse _run_analysis. This will automatically call _get_context, 
-        # which performs the search and caches the results for later use.
-        return self._run_analysis(entity_name, ticker, system_prompt, f"Recent news and catalysts for {entity_name}")
+        # 4. Run the LLM call directly
+        chain = prompt | self.llm
+        response = chain.invoke({
+            "entity_name": entity_name,
+            "context": context_str
+        })
+        
+        # Return the LLM's JSON response, packaged in the standard format
+        return {"answer": response.content, "sources": []}
     
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
