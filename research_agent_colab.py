@@ -159,7 +159,9 @@ class ResearchAgent:
         
         return {"answer": response['answer'].content, "sources": response['sources']}
 
-     def generate_scout_analysis(self, entity_name, ticker, quant_score):
+    #test
+
+    def generate_scout_analysis(self, entity_name, ticker, quant_score):
         """
         Performs a hybrid analysis by synthesizing a quantitative score with qualitative news snippets.
         """
