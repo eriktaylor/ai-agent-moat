@@ -168,27 +168,30 @@ class ResearchAgent:
         
         # 1. Perform a single, lightweight search for recent news.
         try:
-            scout_query = f'"{entity_name}" ({ticker}) stock news catalyst OR outlook {pd.Timestamp.now().year}'
-            search_results = self.search_wrapper.results(scout_query, num_results=4)
+            scout_query = f'"{entity_name}" OR "{ticker}" stock news catalyst OR earnings OR "analyst rating" OR "product launch" OR guidance OR FDA'
+            search_results = self.search_wrapper.results(scout_query, num_results=5)
             if not search_results:
                 # Return a default "not compelling" response if no news is found
-                return {"answer": '{"news_summary": "No recent news found.", "compelling_score": 1, "positive_catalyst": false, "negative_catalyst": false}', "sources": []}
+                return {"answer": '{"summary": "No recent news found.", "catalyst_detected": false, "compelling_score": 1}', "sources": []}
         except Exception as e:
             # Handle search API failure
-            return {"answer": f'{{"news_summary": "Error: Google Search API failed. ({e})", "compelling_score": 0}}', "sources": []}
+            return {"answer": f'{{"summary": "Error: Google Search API failed. ({e})", "catalyst_detected": false, "compelling_score": 0}}', "sources": []}
     
         # 2. Format the context for the LLM
         context_snippets = [f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results]
         context_str = "\n---\n".join(context_snippets)
-    
-        # 3. Define the specific "Scout" prompt
+
+
+        # 3. Define the new, stricter "Triage Analyst" prompt
         scout_system_prompt = (
-            "You are a 'Scout Analyst'. Your job is to read the provided news snippets for '{entity_name}' and determine if there is a compelling, recent story. "
+            "You are a 'Triage Analyst'. Your job is to scan the provided news snippets for a significant, recent financial catalyst for '{entity_name}'.\n"
+            "A catalyst is a SPECIFIC EVENT (e.g., earnings beat/miss, FDA decision, new contract, guidance update, analyst upgrade/downgrade), not general market commentary.\n"
             "Based ONLY on the provided context, answer in a single, valid JSON object with the following keys:\n"
-            "- \"positive_catalyst\": (boolean)\n"
-            "- \"negative_catalyst\": (boolean)\n"
-            "- \"news_summary\": (string) A one-sentence summary of the news.\n"
-            "- \"compelling_score\": (integer, 1-10 where 1 is boring and 10 is an urgent catalyst).\n\n"
+            "- \"catalyst_detected\": (boolean) True if a specific catalyst event is mentioned, otherwise False.\n"
+            "- \"catalyst_type\": (string) Categorize the event (e.g., \"Earnings\", \"Analyst Rating\", \"Regulatory\", \"Product\", \"Other\", \"None\").\n"
+            "- \"sentiment\": (string) \"Positive\", \"Negative\", or \"Neutral\".\n"
+            "- \"summary\": (string) A one-sentence summary of the catalyst event.\n"
+            "- \"compelling_score\": (integer, 1-10) How significant is this event for a potential investor?\n\n"
             "CONTEXT:\n---\n{context}\n---\n\nJSON Response:"
         )
         prompt = ChatPromptTemplate.from_template(scout_system_prompt)
