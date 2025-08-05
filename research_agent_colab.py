@@ -161,26 +161,33 @@ class ResearchAgent:
 
     def generate_scout_analysis(self, entity_name, ticker):
         """
-        Performs a lean, single-search analysis to generate a 'compelling score'
-        without exhausting the search API quota.
+        Performs a lean, single-search analysis to identify a recent financial catalyst.
+        Results are now cached to prevent duplicate API calls.
         """
-        print(f"🕵️ Scouting {entity_name}...")
+        # Check cache first
+        scout_cache_key = f"scout_{entity_name}_{ticker}"
+        if scout_cache_key in self.cache:
+            print(f"🕵️ Returning cached scout analysis for {entity_name}...")
+            return self.cache[scout_cache_key]
+
+        print(f"🕵️ Scouting {entity_name} for catalysts...")
         
-        # 1. Perform a single, lightweight search for recent news.
+        # 1. Perform a more targeted search for recent catalyst events.
         try:
             scout_query = f'"{entity_name}" OR "{ticker}" stock news catalyst OR earnings OR "analyst rating" OR "product launch" OR guidance OR FDA'
-            search_results = self.search_wrapper.results(scout_query, num_results=5)
+            search_results = self.search_wrapper.results(scout_query, num_results=4)
             if not search_results:
-                # Return a default "not compelling" response if no news is found
-                return {"answer": '{"summary": "No recent news found.", "catalyst_detected": false, "compelling_score": 1}', "sources": []}
+                result = {"answer": '{"summary": "No recent news found.", "catalyst_detected": false, "compelling_score": 1}', "sources": []}
+                self.cache[scout_cache_key] = result # Cache the "not found" result
+                return result
         except Exception as e:
-            # Handle search API failure
-            return {"answer": f'{{"summary": "Error: Google Search API failed. ({e})", "catalyst_detected": false, "compelling_score": 0}}', "sources": []}
-    
+            result = {"answer": f'{{"summary": "Error: Google Search API failed. ({e})", "catalyst_detected": false, "compelling_score": 0}}', "sources": []}
+            self.cache[scout_cache_key] = result # Cache the error result
+            return result
+
         # 2. Format the context for the LLM
         context_snippets = [f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results]
         context_str = "\n---\n".join(context_snippets)
-
 
         # 3. Define the new, stricter "Triage Analyst" prompt
         scout_system_prompt = (
@@ -195,16 +202,18 @@ class ResearchAgent:
             "CONTEXT:\n---\n{context}\n---\n\nJSON Response:"
         )
         prompt = ChatPromptTemplate.from_template(scout_system_prompt)
-        
-        # 4. Run the LLM call directly
+
+        # 4. Run the LLM call
         chain = prompt | self.llm
         response = chain.invoke({
             "entity_name": entity_name,
             "context": context_str
         })
         
-        # Return the LLM's JSON response, packaged in the standard format
-        return {"answer": response.content, "sources": []}
+        # Cache the successful result before returning
+        final_result = {"answer": response.content, "sources": []}
+        self.cache[scout_cache_key] = final_result
+        return final_result
     
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
