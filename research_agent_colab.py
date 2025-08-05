@@ -159,58 +159,53 @@ class ResearchAgent:
         
         return {"answer": response['answer'].content, "sources": response['sources']}
 
-    def generate_scout_analysis(self, entity_name, ticker):
+     def generate_scout_analysis(self, entity_name, ticker, quant_score):
         """
-        Performs a lean, single-search analysis to identify a recent financial catalyst.
-        Results are now cached to prevent duplicate API calls.
+        Performs a hybrid analysis by synthesizing a quantitative score with qualitative news snippets.
         """
-        # Check cache first
-        scout_cache_key = f"scout_{entity_name}_{ticker}"
+        scout_cache_key = f"hybrid_scout_{entity_name}_{ticker}"
         if scout_cache_key in self.cache:
-            print(f"🕵️ Returning cached scout analysis for {entity_name}...")
+            print(f"🕵️ Returning cached hybrid analysis for {entity_name}...")
             return self.cache[scout_cache_key]
 
-        print(f"🕵️ Scouting {entity_name} for catalysts...")
+        print(f"🕵️ Performing hybrid scout for {entity_name}...")
         
-        # 1. Perform a more targeted search for recent catalyst events.
         try:
-            scout_query = f'"{entity_name}" OR "{ticker}" stock news catalyst OR earnings OR "analyst rating" OR "product launch" OR guidance OR FDA'
+            scout_query = f'"{entity_name}" OR "{ticker}" stock news catalyst OR earnings OR guidance OR "analyst rating"'
             search_results = self.search_wrapper.results(scout_query, num_results=4)
-            if not search_results:
-                result = {"answer": '{"summary": "No recent news found.", "catalyst_detected": false, "compelling_score": 1}', "sources": []}
-                self.cache[scout_cache_key] = result # Cache the "not found" result
-                return result
         except Exception as e:
-            result = {"answer": f'{{"summary": "Error: Google Search API failed. ({e})", "catalyst_detected": false, "compelling_score": 0}}', "sources": []}
-            self.cache[scout_cache_key] = result # Cache the error result
-            return result
+            # Handle API failure
+            return {"answer": f'{{"justification": "Error: Google Search API failed. ({e})", "hybrid_score": 0}}', "sources": []}
 
-        # 2. Format the context for the LLM
-        context_snippets = [f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results]
-        context_str = "\n---\n".join(context_snippets)
+        context_str = "\n---\n".join([f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results])
+        if not search_results:
+            context_str = "No recent news found."
 
-        # 3. Define the new, stricter "Triage Analyst" prompt
-        scout_system_prompt = (
-            "You are a 'Triage Analyst'. Your job is to scan the provided news snippets for a significant, recent financial catalyst for '{entity_name}'.\n"
-            "A catalyst is a SPECIFIC EVENT (e.g., earnings beat/miss, FDA decision, new contract, guidance update, analyst upgrade/downgrade), not general market commentary.\n"
-            "Based ONLY on the provided context, answer in a single, valid JSON object with the following keys:\n"
-            "- \"catalyst_detected\": (boolean) True if a specific catalyst event is mentioned, otherwise False.\n"
-            "- \"catalyst_type\": (string) Categorize the event (e.g., \"Earnings\", \"Analyst Rating\", \"Regulatory\", \"Product\", \"Other\", \"None\").\n"
-            "- \"sentiment\": (string) \"Positive\", \"Negative\", or \"Neutral\".\n"
-            "- \"summary\": (string) A one-sentence summary of the catalyst event.\n"
-            "- \"compelling_score\": (integer, 1-10) How significant is this event for a potential investor?\n\n"
-            "CONTEXT:\n---\n{context}\n---\n\nJSON Response:"
+        # Define the new "Hybrid Analyst" prompt
+        hybrid_system_prompt = (
+            "You are a 'Hybrid Financial Analyst'. Your job is to synthesize a quantitative model score with qualitative news analysis for '{entity_name}'.\n\n"
+            "Here are your inputs:\n"
+            "1. Quantitative Score: {quant_score:.2f} (A probability from 0.0 to 1.0 that the stock will outperform. Higher is better.)\n"
+            "2. Recent News Snippets:\n---\n{context}\n---\n\n"
+            "Your Task: Provide a final 'Hybrid Score' from 1-10. A high score requires BOTH a strong quantitative score (e.g., > 0.65) AND a compelling, positive news catalyst. "
+            "A weak quant score OR negative/boring news should result in a low score. "
+            "Answer in a single, valid JSON object with the following keys:\n"
+            "- \"hybrid_score\": (integer, 1-10)\n"
+            "- \"justification\": (string) A one-sentence explanation for the score, referencing both the quant score and the news.\n"
+            "- \"catalyst_summary\": (string) A brief summary of the news catalyst. If no news, state that.\n"
+            "- \"sentiment\": (string) \"Positive\", \"Negative\", or \"Neutral\" based on the news."
+            "\n\nJSON Response:"
         )
-        prompt = ChatPromptTemplate.from_template(scout_system_prompt)
+        prompt = ChatPromptTemplate.from_template(hybrid_system_prompt)
 
-        # 4. Run the LLM call
+        # Run the LLM call
         chain = prompt | self.llm
         response = chain.invoke({
             "entity_name": entity_name,
+            "quant_score": quant_score,
             "context": context_str
         })
         
-        # Cache the successful result before returning
         final_result = {"answer": response.content, "sources": []}
         self.cache[scout_cache_key] = final_result
         return final_result
