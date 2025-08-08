@@ -77,6 +77,13 @@ class CandidateGenerator:
         prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
         prod_model.fit(X, y)
 
+        # Calculate Feature Importance
+        feature_imp = pd.DataFrame(
+            sorted(zip(prod_model.feature_importances_, X.columns)),
+            columns=['Value','Feature']
+        )
+        feature_imp_sorted = feature_imp.sort_values(by="Value", ascending=False).head(10)
+
         print("--- Most Recent Data ---")
         # Get the latest data point for each stock
         latest_data = final_df.loc[final_df.index == final_df.index.max()]
@@ -99,4 +106,4 @@ class CandidateGenerator:
         print(f"💾 Saving top {len(top_candidates)} candidates to {config.CANDIDATE_RESULTS_PATH}...")
         top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
 
-        return top_candidates
+        return top_candidates, feature_imp_sorted
