@@ -200,13 +200,19 @@ class AgenticLayer:
             
             # Combine all information
             quant_score = candidates_df[candidates_df['Ticker'] == ticker]['Quant_Score'].iloc[0] if ticker in known_tickers else 'N/A'
-            final_results.append({
+
+            # Combine all information into a single record, including individual reports.
+            result_record = {
                 'Ticker': ticker,
                 'Quant_Score': quant_score,
                 'Agent_Rating': judgment.get('rating'),
                 'Agent_Recommendation': judgment.get('recommendation'),
-                'Justification': judgment.get('justification')
-            })
+                'Justification': judgment.get('justification'),
+                'Market_Investor_Analysis': reports.get('Market Investor', 'N/A'),
+                'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
+                'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A')
+            }
+            final_results.append(result_record)
 
         # Create and save the final DataFrame
         results_df = pd.DataFrame(final_results).sort_values(by="Agent_Rating", ascending=False).reset_index(drop=True)
