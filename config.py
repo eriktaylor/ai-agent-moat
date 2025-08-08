@@ -4,16 +4,17 @@
 Centralized configuration file for the stock analysis and portfolio management system.
 """
 
+# config.py
+
 import os
 
 # --- Path Configurations ---
-# Using os.path.join for cross-platform compatibility.
-DRIVE_PATH = '/content/drive/My Drive/'
-DATA_DIR = os.path.join(DRIVE_PATH, 'stock_data_cache')
+# The new data directory is in the root of the repository.
+DATA_DIR = 'data'
 PRICE_DATA_PATH = os.path.join(DATA_DIR, 'sp500_price_data.csv')
 FUNDAMENTAL_DATA_PATH = os.path.join(DATA_DIR, 'sp500_fundamental_data.csv')
 SPY_DATA_PATH = os.path.join(DATA_DIR, 'spy_market_data.csv')
-PORTFOLIO_PATH = os.path.join(DRIVE_PATH, 'live_portfolio.csv')
+PORTFOLIO_PATH = os.path.join(DATA_DIR, 'live_portfolio.csv')
 
 # --- Data Fetching Parameters ---
 # How old a cached file can be before we refresh it.
