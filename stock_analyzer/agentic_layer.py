@@ -39,6 +39,11 @@ class AgenticLayer:
             "companies with recent technological breakthroughs stock"
         ]
         for query in queries:
+            # If we've already hit our limit, no need to make more API calls.
+            if len(new_tickers) >= config.MAX_SCOUT_RESULTS:
+                print("Scout limit reached. Halting search.")
+                break
+                
             print(f"Scouting with query: '{query}'")
             search_results = self.search_wrapper.results(query, num_results=5)
             context = " ".join([res.get('snippet', '') for res in search_results])
@@ -54,8 +59,13 @@ class AgenticLayer:
             for ticker in found_tickers:
                 if ticker not in known_tickers:
                     new_tickers.add(ticker)
-        print(f"✅ Scout found {len(new_tickers)} new potential tickers: {list(new_tickers)}")
-        return list(new_tickers)
+                    if len(new_tickers) >= config.MAX_SCOUT_RESULTS:
+                        break
+
+        # Enforce the exact limit on the final list before returning
+        final_scouted_list = list(new_tickers)[:config.MAX_SCOUT_RESULTS]
+        print(f"✅ Scout found {len(final_scouted_list)} new potential tickers: {final_scouted_list}")
+        return final_scouted_list
 
     def _run_analyst_agent(self, ticker):
         """
