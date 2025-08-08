@@ -5,10 +5,11 @@ The main entry point for the automated stock analysis and portfolio management p
 This script orchestrates the entire process from data loading to portfolio adjustment.
 """
 
-from data_manager import DataManager
-from candidate_generator import CandidateGenerator
-# from agentic_layer import AgenticLayer # We will create this next
-# from portfolio_manager import PortfolioManager # We will create this next
+# The imports now reference the stock_analyzer package
+from stock_analyzer.data_manager import DataManager
+from stock_analyzer.candidate_generator import CandidateGenerator
+# from stock_analyzer.agentic_layer import AgenticLayer
+# from stock_analyzer.portfolio_manager import PortfolioManager
 
 def run_pipeline():
     """
