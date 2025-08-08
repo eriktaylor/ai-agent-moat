@@ -40,9 +40,7 @@ TOP_N_CANDIDATES = 20
 
 # --- Agentic Layer Parameters ---
 # Number of top candidates to pass from the scout to the deep-dive analysis.
-AGENT_DEEP_DIVE_CANDIDATES = 3
-# The maximum number of new tickers for the scout agent to propose.
-MAX_SCOUT_RESULTS = 3
+AGENT_DEEP_DIVE_CANDIDATES = 5
 
 # --- Portfolio Management Parameters ---
 # The maximum number of stocks to hold in the portfolio.
