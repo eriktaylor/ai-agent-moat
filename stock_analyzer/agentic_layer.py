@@ -19,7 +19,7 @@ class AgenticLayer:
     """
     def __init__(self):
         """Initializes the models, tools, and cache."""
-        self.llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2)
+        self.llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2)
         self.search_wrapper = GoogleSearchAPIWrapper(
             google_cse_id=os.environ.get('GOOGLE_CSE_ID'),
             google_api_key=os.environ.get('GOOGLE_API_KEY')
