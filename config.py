@@ -23,7 +23,7 @@ CANDIDATE_RESULTS_PATH = os.path.join(DATA_DIR, 'quantitative_candidates.csv')
 # How old a cached file can be before we refresh it.
 CACHE_MAX_AGE_DAYS = 5
 # The historical data period to download.
-YFINANCE_PERIOD = "5y"
+YFINANCE_PERIOD = "3y"
 
 # --- Candidate Generation (LightGBM) Parameters ---
 # The target is to find stocks that will be in the top 20% of performers.
