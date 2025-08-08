@@ -77,7 +77,7 @@ class CandidateGenerator:
         prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
         prod_model.fit(X, y)
 
-        print("--- on Most Recent Data ---")
+        print("--- Most Recent Data ---")
         # Get the latest data point for each stock
         latest_data = final_df.loc[final_df.index == final_df.index.max()]
         latest_X = latest_data.drop(columns=['target', 'Ticker', 'Adj Close'])
@@ -93,4 +93,10 @@ class CandidateGenerator:
             'Quant_Score': probabilities
         }).sort_values(by='Quant_Score', ascending=False).reset_index(drop=True)
 
-        return candidates.head(config.TOP_N_CANDIDATES)
+        top_candidates = candidates.head(config.TOP_N_CANDIDATES)
+
+        # Save the results to a CSV file for the next layer to use.
+        print(f"💾 Saving top {len(top_candidates)} candidates to {config.CANDIDATE_RESULTS_PATH}...")
+        top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
+
+        return top_candidates
