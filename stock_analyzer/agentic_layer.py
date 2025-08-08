@@ -216,7 +216,7 @@ class AgenticLayer:
         new_tickers = self._run_scout_agent(known_tickers)
 
         # Take the top N candidates from the quantitative list
-        top_quant_candidates = candidates_df.head(config.QUANT_DEEP_DIVE_CANDIDATES)['Ticker'].tolist()
+        top_quant_candidates = quant_candidates_df.head(config.QUANT_DEEP_DIVE_CANDIDATES)['Ticker'].tolist()
         print(f"Taking top {len(top_quant_candidates)} quantitative candidates for deep-dive.")
 
         # Combine with the scouted tickers to form the final analysis list
