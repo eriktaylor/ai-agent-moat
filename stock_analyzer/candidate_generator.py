@@ -1,0 +1,96 @@
+# candidate_generator.py
+
+"""
+Handles the quantitative screening of stocks using a LightGBM model
+to generate a list of promising candidates for deeper analysis.
+"""
+
+import pandas as pd
+import numpy as np
+import lightgbm as lgb
+from sklearn.metrics import classification_report
+import config # Import the configuration file
+
+class CandidateGenerator:
+    """
+    Uses a machine learning model to screen and rank stocks based on quantitative factors.
+    """
+    def _create_features(self, price_df, fundamentals_df, spy_df):
+        """
+        Engineers features for the model from the raw data.
+        """
+        print("🚀 Starting feature engineering...")
+        features_df = price_df.copy()
+        grouped = features_df.groupby('Ticker')
+
+        # --- Momentum Features ---
+        for lag in [5, 21, 63, 252]:
+            features_df[f'return_{lag}d'] = grouped['Adj Close'].transform(lambda x: x.pct_change(lag))
+
+        # --- Volatility Features ---
+        stock_returns = grouped['Adj Close'].transform(lambda x: np.log(x / x.shift(1)))
+        for lag in [21, 63, 252]:
+            features_df[f'volatility_{lag}d'] = stock_returns.groupby(features_df['Ticker']).transform(lambda x: x.rolling(lag).std())
+
+        # --- Market-Relative Features ---
+        market_returns = np.log(spy_df['Close'] / spy_df['Close'].shift(1)).rename('market_return')
+        features_df = features_df.join(market_returns)
+
+        def rolling_beta(stock_return, market_return, window=63):
+            cov = stock_return.rolling(window=window).cov(market_return)
+            market_var = market_return.rolling(window=window).var()
+            return cov / market_var
+        features_df['beta_63d'] = rolling_beta(stock_returns, features_df['market_return'])
+
+        # --- Combine with Fundamentals and Clean ---
+        features_df = features_df.reset_index().merge(fundamentals_df, on='Ticker').set_index('Date')
+        features_df = features_df.drop(columns=['Open', 'High', 'Low', 'Close', 'Volume', 'market_return'])
+        return features_df.dropna()
+
+    def _define_target(self, df):
+        """
+        Defines the target variable based on future relative performance.
+        """
+        df_copy = df.copy()
+        # Calculate the future return for each stock
+        df_copy['future_return'] = df_copy.groupby('Ticker')['Adj Close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['Adj Close'] - 1
+        df_copy = df_copy.dropna(subset=['future_return'])
+        # Determine the cutoff for being a "top performer" for each day
+        cutoffs = df_copy.groupby(df_copy.index)['future_return'].transform(lambda x: x.quantile(config.TARGET_QUANTILE))
+        # The target is 1 if the stock's future return is above the cutoff, 0 otherwise
+        df_copy['target'] = (df_copy['future_return'] >= cutoffs).astype(int)
+        return df_copy.drop(columns=['future_return'])
+
+    def generate_candidates(self, price_df, fundamentals_df, spy_df):
+        """
+        Main method to run the feature engineering, model training, and candidate prediction.
+        """
+        features_df = self._create_features(price_df, fundamentals_df, spy_df)
+        final_df = self._define_target(features_df)
+
+        X = final_df.drop(columns=['target', 'Ticker', 'Adj Close'])
+        y = final_df['target']
+
+        print("--- 🏋️ Training Production Model on All Data ---")
+        # Adjust for class imbalance
+        scale_pos_weight = y.value_counts()[0] / y.value_counts()[1]
+        prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
+        prod_model.fit(X, y)
+
+        print("--- on Most Recent Data ---")
+        # Get the latest data point for each stock
+        latest_data = final_df.loc[final_df.index == final_df.index.max()]
+        latest_X = latest_data.drop(columns=['target', 'Ticker', 'Adj Close'])
+
+        if latest_X.empty:
+            print("⚠️ No recent data available for prediction.")
+            return pd.DataFrame()
+
+        # Generate probabilities of being a top performer
+        probabilities = prod_model.predict_proba(latest_X)[:, 1]
+        candidates = pd.DataFrame({
+            'Ticker': latest_data['Ticker'],
+            'Quant_Score': probabilities
+        }).sort_values(by='Quant_Score', ascending=False).reset_index(drop=True)
+
+        return candidates.head(config.TOP_N_CANDIDATES)
