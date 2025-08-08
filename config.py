@@ -31,7 +31,7 @@ TOP_N_CANDIDATES = 20
 
 # --- Agentic Layer Parameters ---
 # The number of top-ranked candidates from the quantitative model to pass to the agentic layer.
-QUANT_DEEP_DIVE_CANDIDATES = 5
+QUANT_DEEP_DIVE_CANDIDATES = 3
 # The maximum number of new tickers for the scout agent to propose.
 MAX_SCOUT_RESULTS = 3
 
