@@ -10,7 +10,7 @@ from operator import itemgetter
 import datetime
 
 # Import the tools this agent will use
-from tools import get_stock_info, scrape_website
+from .tools import get_stock_info, scrape_website
 
 class ResearchAgent:
     def __init__(self, llm, embeddings_model, search_tool):
