@@ -93,20 +93,30 @@ class AgenticLayer:
             # 2. Gather Real-Time News Context
             news_query = f'"{financial_data["longName"]}" ({ticker}) stock news analysis OR concerns OR outlook'
             search_results = self.search_wrapper.results(news_query, num_results=7)
-            news_context = "\n---\n".join([f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results])
+            #news_context = "\n---\n".join([f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results])
+            news_context = "\n---\n".join([f"**{r.get('title', 'No Title')}**: {r.get('snippet', '')}" for r in search_results if r.get('snippet')])
 
             # 3. Generate Multi-Persona Analysis
             system_prompt = (
-                "You are an expert financial analyst. Based on the provided financial data and recent news context, "
-                "provide a concise analysis from the perspective of a {persona}.\n\n"
-                "Current Date: {date}\nFinancial Data: {financial_data}\n\nNews Context:\n{news_context}\n\n"
-                "Your {persona} analysis:"
+                "You are an expert financial analyst writing a report from the perspective of a {persona}. "
+                "Your primary task is to interpret the fresh 'News Context' and explain how it impacts the company's investment thesis. "
+                "You MUST integrate specific details from the news (e.g., mention a specific product, partnership, or market concern from a headline) "
+                "and reconcile them with the provided 'Financial Data'.\n\n"
+                "**RULES:**\n"
+                "1. Your analysis MUST begin by referencing a specific point from the 'News Context'.\n"
+                "2. Explain how the news supports, contradicts, or adds nuance to the quantitative 'Financial Data'.\n"
+                "3. Conclude with a clear statement summarizing your {persona}'s viewpoint based on this synthesis.\n\n"
+                "--- DATA AS OF {date} ---\n"
+                "**Financial Data:**\n{financial_data}\n\n"
+                "**News Context:**\n{news_context}\n\n"
+                "--- {persona} Analysis ---"
             )
+
             prompt = ChatPromptTemplate.from_template(system_prompt)
             chain = prompt | self.llm
-
             personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
             reports = {}
+            
             for persona in personas:
                 response = chain.invoke({
                     "persona": persona,
