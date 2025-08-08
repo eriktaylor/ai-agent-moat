@@ -80,16 +80,16 @@ class AgenticLayer:
         try:
             # 1. Gather Financial Data
             stock_info = yf.Ticker(ticker).info
-            financial_data = {
-                "longName": stock_info.get("longName", "N/A"),
-                "sector": stock_info.get("sector", "N/A"),
-                "trailingPE": stock_info.get("trailingPE", "N/A"),
-                "forwardPE": stock_info.get("forwardPE", "N/A"),
+            company_name = stock_info.get("longName", ticker)
+            financial_data = { "longName": company_name, 
+                "sector": stock_info.get("sector", "N/A"), 
+                "trailingPE": stock_info.get("trailingPE", "N/A"), 
+                "forwardPE": stock_info.get("forwardPE", "N/A"), 
                 "marketCap": stock_info.get("marketCap", "N/A"),
-                "fiftyTwoWeekHigh": stock_info.get("fiftyTwoWeekHigh", "N/A"),
-                "fiftyTwoWeekLow": stock_info.get("fiftyTwoWeekLow", "N/A"),
+                "fiftyTwoWeekHigh": stock_info.get("fiftyTwoWeekHigh", "N/A"), 
+                "fiftyTwoWeekLow": stock_info.get("fiftyTwoWeekLow", "N/A"), 
             }
-
+            
             # 2. Gather Real-Time News Context
             print(f"Gathering diverse news context for {ticker}...")
             news_queries = {
