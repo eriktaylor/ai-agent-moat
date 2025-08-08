@@ -4,9 +4,9 @@ import re
 import locale
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
-from streamlit/research_agent import ResearchAgent
-from streamlit/tools import get_stock_info
-from streamlit/display_utils import display_analysis
+from streamlit.research_agent import ResearchAgent
+from streamlit.tools import get_stock_info
+from streamlit.display_utils import display_analysis
 
 # --- Page Configuration ---
 st.set_page_config(
