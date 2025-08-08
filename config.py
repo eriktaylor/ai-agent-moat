@@ -15,12 +15,10 @@ PRICE_DATA_PATH = os.path.join(DATA_DIR, 'sp500_price_data.csv')
 FUNDAMENTAL_DATA_PATH = os.path.join(DATA_DIR, 'sp500_fundamental_data.csv')
 SPY_DATA_PATH = os.path.join(DATA_DIR, 'spy_market_data.csv')
 
-#Results of candidate generation pipeline (can be manually triggered by validate.ipynb)
+#Results of candidate generation pipeline
 CANDIDATE_RESULTS_PATH = os.path.join(DATA_DIR, 'quantitative_candidates.csv')
-
 #Results of agentic layer
 AGENTIC_RESULTS_PATH = os.path.join(DATA_DIR, 'agentic_recommendations.csv')
-
 #Live portfolio
 PORTFOLIO_PATH = os.path.join(DATA_DIR, 'live_portfolio.csv')
 
@@ -43,6 +41,8 @@ TOP_N_CANDIDATES = 20
 # --- Agentic Layer Parameters ---
 # Number of top candidates to pass from the scout to the deep-dive analysis.
 AGENT_DEEP_DIVE_CANDIDATES = 3
+# The maximum number of new tickers for the scout agent to propose.
+MAX_SCOUT_RESULTS = 3
 
 # --- Portfolio Management Parameters ---
 # The maximum number of stocks to hold in the portfolio.
