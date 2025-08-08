@@ -239,7 +239,7 @@ class AgenticLayer:
             # Step 3: Get final judgment
             judgment = self._run_ranking_judge_agent(reports, ticker)       
             # Combine all information
-            quant_score = candidates_df[candidates_df['Ticker'] == ticker]['Quant_Score'].iloc[0] if ticker in known_tickers else 'N/A'
+            quant_score = quant_candidates_df[quant_candidates_df['Ticker'] == ticker]['Quant_Score'].iloc[0] if ticker in known_tickers else 'N/A'
 
             # Combine all information into a single record, including individual reports.
             result_record = {
