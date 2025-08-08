@@ -14,10 +14,15 @@ DATA_DIR = 'data'
 PRICE_DATA_PATH = os.path.join(DATA_DIR, 'sp500_price_data.csv')
 FUNDAMENTAL_DATA_PATH = os.path.join(DATA_DIR, 'sp500_fundamental_data.csv')
 SPY_DATA_PATH = os.path.join(DATA_DIR, 'spy_market_data.csv')
-PORTFOLIO_PATH = os.path.join(DATA_DIR, 'live_portfolio.csv')
 
 #Results of candidate generation pipeline (can be manually triggered by validate.ipynb)
 CANDIDATE_RESULTS_PATH = os.path.join(DATA_DIR, 'quantitative_candidates.csv')
+
+#Results of agentic layer
+AGENTIC_RESULTS_PATH = os.path.join(DATA_DIR, 'agentic_recommendations.csv')
+
+#Live portfolio
+PORTFOLIO_PATH = os.path.join(DATA_DIR, 'live_portfolio.csv')
 
 # --- Data Fetching Parameters ---
 # How old a cached file can be before we refresh it.
