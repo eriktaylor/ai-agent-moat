@@ -171,10 +171,15 @@ class AgenticLayer:
 
         # Step 1: Scout for new tickers
         new_tickers = self._run_scout_agent(known_tickers)
-        
-        # Combine quantitative candidates and scouted tickers
-        tickers_to_analyze = candidates_df['Ticker'].tolist() + new_tickers
-        
+
+        # Take the top N candidates from the quantitative list
+        top_quant_candidates = candidates_df.head(config.QUANT_DEEP_DIVE_CANDIDATES)['Ticker'].tolist()
+        print(f"Taking top {len(top_quant_candidates)} quantitative candidates for deep-dive.")
+
+        # Combine with the scouted tickers to form the final analysis list
+        tickers_to_analyze = top_quant_candidates + new_tickers
+        print(f"Current tickers for analysis: {len(tickers_to_analyze)} ({tickers_to_analyze})")
+                
         final_results = []
         for ticker in tickers_to_analyze:
             # Step 2: Run multi-persona analysis
