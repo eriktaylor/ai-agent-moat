@@ -196,11 +196,21 @@ class AgenticLayer:
         """
         print("\n--- 🎬 Starting Agentic Analysis Layer ---")
         try:
-            candidates_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
-            known_tickers = set(candidates_df['Ticker'])
+            quant_candidates_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
+            known_tickers = set(quant_candidates_df['Ticker'])
         except FileNotFoundError:
             print(f"❌ Error: Quantitative candidates file not found at {config.CANDIDATE_RESULTS_PATH}")
             return pd.DataFrame()
+
+        try:
+            previous_recommendations_df = pd.read_csv(config.AGENTIC_RESULTS_PATH)
+            # Ensure Analysis_Date is in datetime format for comparison
+            previous_recommendations_df['Analysis_Date'] = pd.to_datetime(previous_recommendations_df['Analysis_Date'])
+            # Add previously analyzed tickers to the known_tickers set for the scout
+            known_tickers.update(previous_recommendations_df['Ticker'])
+        except FileNotFoundError:
+            print("No previous agentic recommendations file found. Starting fresh.")
+            previous_recommendations_df = pd.DataFrame()
 
         # Step 1: Scout for new tickers
         new_tickers = self._run_scout_agent(known_tickers)
@@ -212,15 +222,22 @@ class AgenticLayer:
         # Combine with the scouted tickers to form the final analysis list
         tickers_to_analyze = top_quant_candidates + new_tickers
         print(f"Current tickers for analysis: {len(tickers_to_analyze)} ({tickers_to_analyze})")
-                
+
         final_results = []
+        today = datetime.now()
+                
         for ticker in tickers_to_analyze:
+            if not previous_recommendations_df.empty and ticker in previous_recommendations_df['Ticker'].values:
+                last_analysis = previous_recommendations_df[previous_recommendations_df['Ticker'] == ticker].iloc[0]
+                if (today - last_analysis['Analysis_Date']) < timedelta(days=5):
+                    print(f"✅ Using analysis for {ticker} from {last_analysis['Analysis_Date'].date()}.")
+                    final_results.append(last_analysis.to_dict())
+                    continue # Skip to the next ticker
+                    
             # Step 2: Run multi-persona analysis
             reports = self._run_analyst_agent(ticker)
-            
             # Step 3: Get final judgment
-            judgment = self._run_ranking_judge_agent(reports, ticker)
-            
+            judgment = self._run_ranking_judge_agent(reports, ticker)       
             # Combine all information
             quant_score = candidates_df[candidates_df['Ticker'] == ticker]['Quant_Score'].iloc[0] if ticker in known_tickers else 'N/A'
 
@@ -228,6 +245,7 @@ class AgenticLayer:
             result_record = {
                 'Ticker': ticker,
                 'Quant_Score': quant_score,
+                'Analysis_Date': today.strftime('%Y-%m-%d'), # Add analysis date
                 'Agent_Rating': judgment.get('rating'),
                 'Agent_Recommendation': judgment.get('recommendation'),
                 'Justification': judgment.get('justification'),
