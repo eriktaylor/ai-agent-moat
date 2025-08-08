@@ -91,11 +91,24 @@ class AgenticLayer:
             }
 
             # 2. Gather Real-Time News Context
-            news_query = f'"{financial_data["longName"]}" ({ticker}) stock news analysis OR concerns OR outlook'
-            search_results = self.search_wrapper.results(news_query, num_results=7)
-            #news_context = "\n---\n".join([f"Title: {r.get('title', '')}\nSnippet: {r.get('snippet', '')}" for r in search_results])
-            news_context = "\n---\n".join([f"**{r.get('title', 'No Title')}**: {r.get('snippet', '')}" for r in search_results if r.get('snippet')])
+            print(f"Gathering diverse news context for {ticker}...")
+            news_queries = {
+                "Professional & Financial Analysis": f'"{company_name}" ({ticker}) stock analysis site:reuters.com OR site:bloomberg.com OR site:wsj.com',
+                "Retail & Social Sentiment": f'"{company_name}" ({ticker}) stock sentiment site:reddit.com/r/wallstreetbets OR site:reddit.com/r/stocks OR site:fool.com OR site:seekingalpha.com',
+                "Risk Factors & Negative News": f'"{company_name}" ({ticker}) risk OR concern OR lawsuit OR SEC filing OR issues OR investigation OR recall OR safety OR short interest'
+            }
 
+            news_context = ""
+            for category, query in news_queries.items():
+                num_results = 4 if category == "Professional & Financial Analysis" else 2
+                news_context += f"\n--- {category} ---\n"
+                search_results = self.search_wrapper.results(query, num_results=num_results)
+                if search_results:
+                    for r in search_results:
+                        news_context += f"**{r.get('title', 'No Title')}**: {r.get('snippet', '')}\n"
+                else:
+                    news_context += "No recent results found for this category.\n"
+            
             # 3. Generate Multi-Persona Analysis
             system_prompt = (
                 "You are an expert financial analyst writing a report from the perspective of a {persona}. "
