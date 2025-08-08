@@ -140,8 +140,9 @@ class AgenticLayer:
             "1. Market Investor (focuses on momentum and news):\n{market_report}\n\n"
             "2. Value Investor (focuses on fundamentals and moat):\n{value_report}\n\n"
             "3. Devil's Advocate (focuses on risks and counterarguments):\n{devils_report}\n\n"
-            "JSON Response:"
+            "Provide ONLY the JSON object and nothing else. Do not add any conversational text or markdown formatting like ```json."
         )
+
         prompt = ChatPromptTemplate.from_template(system_prompt)
         chain = prompt | self.llm
         
@@ -151,11 +152,19 @@ class AgenticLayer:
             "devils_report": reports["Devil's Advocate"],
         })
 
+        # This is more robust and will extract the JSON even if the LLM adds extra text.
         try:
-            return json.loads(response.content)
-        except json.JSONDecodeError:
+            # Use regex to find the JSON block. This is robust against surrounding text.
+            json_match = re.search(r"\{.*\}", response.content, re.DOTALL)
+            if json_match:
+                clean_json_str = json_match.group(0)
+                return json.loads(clean_json_str)
+            else:
+                # If no JSON object is found, raise an error to be caught
+                raise json.JSONDecodeError("No JSON object found in LLM response", response.content, 0)
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse judge's decision for {ticker}. Raw response: '{response.content}'. Error: {e}")
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Failed to parse judge's final decision."}
-
 
     def run_analysis(self):
         """
