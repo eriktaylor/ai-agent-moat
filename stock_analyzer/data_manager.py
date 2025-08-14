@@ -97,7 +97,8 @@ class DataManager:
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH)
         else:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
-            fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
+            #fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
+            fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)
         
         # --- START: UNIVERSAL LOGIC FOR SPY DATA ---
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
