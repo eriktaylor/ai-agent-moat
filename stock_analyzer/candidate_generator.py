@@ -49,9 +49,19 @@ class CandidateGenerator:
         df_copy = df.copy()
         df_copy['future_return'] = df_copy.groupby('Ticker')['Adj Close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['Adj Close'] - 1
         df_copy = df_copy.dropna(subset=['future_return'])
-        cutoffs = df_copy.groupby(df_copy.index)['future_return'].transform(lambda x: x.quantile(config.TARGET_QUANTILE))
-        df_copy['target'] = (df_copy['future_return'] >= cutoffs).astype(int)
-        return df_copy.drop(columns=['future_return'])
+    
+        # 1. Calculate daily cutoffs as a separate Series (indexed by unique dates)
+        daily_cutoffs = df_copy.groupby('Date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
+    
+        # 2. Merge the cutoffs back into the main DataFrame.
+        #    This correctly maps the daily cutoff to every stock on that day.
+        df_copy = df_copy.merge(daily_cutoffs, on='Date', how='left')
+    
+        # 3. Perform the comparison on aligned columns.
+        df_copy['target'] = (df_copy['future_return'] >= df_copy['cutoff']).astype(int)
+    
+        # 4. Clean up and return the result.
+        return df_copy.drop(columns=['future_return', 'cutoff'])
 
     def generate_candidates(self, price_df, fundamentals_df, spy_df):
         """
