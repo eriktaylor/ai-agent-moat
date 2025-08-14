@@ -18,12 +18,12 @@ class DataManager:
     def _is_data_stale(self, path, max_age_days):
         """
         Checks if the data inside a time-series CSV is older than the max age.
-        This is only for files that are expected to have a 'Date' column.
         """
         if not os.path.exists(path):
             print(f"Cache file '{os.path.basename(path)}' not found. Marked as stale.")
             return True
         try:
+            # Efficiently read only the 'Date' column to check the last date
             df = pd.read_csv(path, usecols=['Date'])
             if df.empty:
                 print(f"Cache file '{os.path.basename(path)}' is empty. Marked as stale.")
@@ -33,7 +33,6 @@ class DataManager:
             print(f"Latest data in '{os.path.basename(path)}' is from {last_date_in_file.date()} ({data_age.days} days old).")
             return data_age > timedelta(days=max_age_days)
         except (ValueError, KeyError):
-            # This handles files without a 'Date' column gracefully.
             print(f"Could not determine data age from '{os.path.basename(path)}'. Using file modification time instead.")
             file_mod_time = datetime.fromtimestamp(os.path.getmtime(path))
             file_age = datetime.now() - file_mod_time
@@ -54,11 +53,10 @@ class DataManager:
     def get_all_data(self):
         """
         Main method to orchestrate loading of all data. It now uses a dependency-based
-        refresh logic for fundamental data.
+        refresh logic and correctly sets the index on the returned DataFrames.
         """
         print("\n--- 📊 Loading All Financial Data ---")
         
-        # Determine if the main price data needs a refresh
         price_data_is_stale = self._is_data_stale(config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
         
         if price_data_is_stale:
@@ -70,16 +68,21 @@ class DataManager:
             price_df.to_csv(config.PRICE_DATA_PATH, index=False)
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
-            price_df = pd.read_csv(config.PRICE_DATA_PATH, parse_dates=['Date'], index_col='Date')
+            price_df = pd.read_csv(config.PRICE_DATA_PATH)
 
         if price_df is None or price_df.empty:
             print("❌ Could not load the main price data. Aborting.")
             return None, None, None
+        
+        # --- THIS IS THE FIX ---
+        # Ensure the 'Date' column is converted to datetime and set as the index
+        # for the price_df DataFrame, regardless of its source.
+        price_df['Date'] = pd.to_datetime(price_df['Date'])
+        price_df.set_index('Date', inplace=True)
+        # --- END OF FIX ---
             
         available_tickers = price_df['Ticker'].unique().tolist()
         
-        # --- MODIFIED LOGIC FOR FUNDAMENTALS ---
-        # Refresh fundamentals ONLY if the price data was stale.
         if price_data_is_stale:
             print("⏳ Fundamental data cache is being refreshed because price data was stale...")
             data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")]
@@ -92,7 +95,6 @@ class DataManager:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
         
-        # Handle SPY data
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
             spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
