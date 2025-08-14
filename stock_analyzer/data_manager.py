@@ -44,17 +44,11 @@ class DataManager:
         if 'Price' in df_raw.columns:
             print("🔧 Malformed DataFrame detected. Applying corrective formatting...")
             
-            # The actual data starts at DataFrame row index 2.
-            # CORRECTED SLICE: Use iloc[2:] to start from the first row of data.
             clean_df = df_raw.iloc[3:].copy()
             
             # Manually provide the correct column names.
             clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
-            
-            # Convert 'Date' column to datetime objects and set it as the index.
-            #clean_df['Date'] = pd.to_datetime(clean_df['Date'])
-            #clean_df.set_index('Date', inplace=True)
-            
+                        
             return clean_df
         else:
             # The DataFrame is already clean (from yfinance or a healed cache file).
