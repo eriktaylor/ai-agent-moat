@@ -14,6 +14,8 @@ class CandidateGenerator:
         Engineers features for the model from the raw data.
         """
         print("🚀 Starting feature engineering...")
+        spy_df['Close'] = pd.to_numeric(spy_df['Close'], errors='coerce')
+        
         features_df = price_df.copy()
         grouped = features_df.groupby('Ticker')
 
