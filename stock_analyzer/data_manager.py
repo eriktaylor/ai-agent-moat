@@ -35,26 +35,16 @@ class DataManager:
             # If any error occurs reading the file, treat it as stale.
             return True
 
-    def _clean_spy_data(self, df_raw):
-        """
-        Ensures the DataFrame has a clean, consistent format with a DatetimeIndex.
-        """
-        df = df_raw # Start with the raw DataFrame
-    
-        # Step 1: Handle the legacy malformed file format, if detected.
-        if 'Price' in df_raw.columns:
-            print("🔧 Malformed DataFrame detected. Applying corrective formatting...")
-            df = df_raw.iloc[3:].copy()
-            df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
-        
-        # Step 2: Consistently set the 'Date' column as the index.
-        # This step is necessary for DataFrames loaded from any CSV (clean or malformed).
-        # It is skipped if the DataFrame is from a fresh download (which already has a Date index).
-        if 'Date' in df.columns:
-            df['Date'] = pd.to_datetime(df['Date'])
-            df.set_index('Date', inplace=True)
-        
-        return df
+     def _clean_spy_data(self, df_raw):
+        """
+        A consistent cleaning function to handle both clean (from yfinance)
+        and malformed (from old cache file) SPY DataFrames.
+        """
+
+        clean_df = df_raw.iloc[3:].copy()
+        # Manually provide the correct column names.
+        clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']                        
+        return clean_df
 
     def get_sp500_tickers(self):
         """
