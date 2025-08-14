@@ -87,21 +87,25 @@ class DataManager:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
         
+        # --- THIS IS THE FINAL, CORRECTED LOGIC FOR SPY DATA ---
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
+            # Download fresh data. The index is 'Date' and columns are already numeric.
             spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
+            # Save it to the cache for next time, including the index.
             spy_df.to_csv(config.SPY_DATA_PATH, index=True)
-        
-        spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
+        else:
+            print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
+            # Load from cache, ensuring the first column becomes the index and is parsed as dates.
+            spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
 
-        # --- THIS IS THE FIX ---
-        # Ensure all price-related columns are converted to a numeric type.
-        # The 'errors='coerce'' argument will turn any problematic values into NaN (Not a Number).
+        # As a final safety measure, ensure all price-related columns are numeric.
+        # This handles any potential issues when reading from the cache.
         cols_to_numeric = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
         for col in cols_to_numeric:
             if col in spy_df.columns:
                 spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
-        # --- END OF FIX ---
+        # --- END OF CORRECTED LOGIC ---
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
