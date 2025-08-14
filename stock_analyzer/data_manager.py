@@ -54,7 +54,7 @@ class DataManager:
             df['Date'] = pd.to_datetime(df['Date'])
             df.set_index('Date', inplace=True)
         
-    return df
+        return df
 
     def get_sp500_tickers(self):
         """
