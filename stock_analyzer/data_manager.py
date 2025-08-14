@@ -41,8 +41,10 @@ class DataManager:
         A consistent cleaning function to handle both clean (from yfinance)
         and malformed (from old cache file) SPY DataFrames.
         """
+        print('before',df_raw)
         clean_df = df_raw.iloc[3:].copy()
         # Manually provide the correct column names.
+        print('after',clean_df)
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
         clean_df['Date'] = pd.to_datetime(clean_df['Date'])
     
