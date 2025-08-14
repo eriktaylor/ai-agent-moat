@@ -44,7 +44,6 @@ class DataManager:
         # Manually provide the correct column names.
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
         clean_df['Date'] = pd.to_datetime(clean_df['Date'])
-        clean_df.set_index('Date', inplace=True)
         return clean_df
     
     def get_sp500_tickers(self):
