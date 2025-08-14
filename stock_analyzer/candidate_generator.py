@@ -38,7 +38,12 @@ class CandidateGenerator:
             spy_df.set_index('date', inplace=True)
             
         market_returns = np.log(spy_df['close'] / spy_df['close'].shift(1)).rename('market_return')
-        features_df = features_df.join(market_returns)
+        
+        # --- FIX for Duplicate Labels Error ---
+        # The .join() method fails because features_df has a non-unique 'date' index.
+        # We switch to .merge() and then set the index back to 'date' so the rest of the function works as expected.
+        features_df = features_df.reset_index().merge(market_returns.to_frame(), on='date', how='left').set_index('date')
+        # --- END FIX ---
 
         def rolling_beta(stock_return, market_return, window=63):
             cov = stock_return.rolling(window=window).cov(market_return)
