@@ -87,7 +87,6 @@ class DataManager:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
         
-        # --- THIS IS THE FINAL, CORRECTED LOGIC FOR SPY DATA ---
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
             # Download fresh data. The index is 'Date' and columns are already numeric.
@@ -98,7 +97,12 @@ class DataManager:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             # Load from cache, ensuring the first column becomes the index and is parsed as dates.
             spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
-        # --- END OF CORRECTED LOGIC ---
+            numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+            for col in numeric_cols:
+                if col in spy_df.columns:
+                    spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
+
+        
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
