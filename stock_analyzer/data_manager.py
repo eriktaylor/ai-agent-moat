@@ -89,20 +89,19 @@ class DataManager:
         
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
-            # Download fresh data. The index is 'Date' and columns are already numeric.
+            # Download fresh data and save it to the cache for next time.
             spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
-            # Save it to the cache for next time, including the index.
             spy_df.to_csv(config.SPY_DATA_PATH, index=True)
         else:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             # Load from cache, ensuring the first column becomes the index and is parsed as dates.
             spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
-            numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-            for col in numeric_cols:
-                if col in spy_df.columns:
-                    spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
 
-        
+        # Consistently ensure numeric columns are the correct data type, regardless of source.
+        numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in numeric_cols:
+            if col in spy_df.columns:
+                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
