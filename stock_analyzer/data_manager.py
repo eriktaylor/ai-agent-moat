@@ -23,6 +23,7 @@ class DataManager:
             print(f"Cache file '{os.path.basename(path)}' not found. Marked as stale.")
             return True
         try:
+            # Efficiently read only the 'Date' column to check the last date
             df = pd.read_csv(path, usecols=['Date'])
             if df.empty:
                 print(f"Cache file '{os.path.basename(path)}' is empty. Marked as stale.")
@@ -32,6 +33,7 @@ class DataManager:
             print(f"Latest data in '{os.path.basename(path)}' is from {last_date_in_file.date()} ({data_age.days} days old).")
             return data_age > timedelta(days=max_age_days)
         except (ValueError, KeyError):
+            # This handles files without a 'Date' column gracefully (like fundamentals)
             print(f"Could not determine data age from '{os.path.basename(path)}'. Using file modification time instead.")
             file_mod_time = datetime.fromtimestamp(os.path.getmtime(path))
             file_age = datetime.now() - file_mod_time
@@ -77,6 +79,7 @@ class DataManager:
             
         available_tickers = price_df['Ticker'].unique().tolist()
         
+        # Logic for fundamentals remains tied to the price data's freshness
         if price_data_is_stale:
             print("⏳ Fundamental data cache is being refreshed because price data was stale...")
             data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")]
@@ -94,16 +97,17 @@ class DataManager:
             print("⏳ Refreshing SPY data...")
             # Use reset_index() to turn the 'Date' index into a column
             spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True).reset_index()
-            # Save without the pandas index
+            # Save without the pandas index, ensuring 'Date' is a named column
             spy_df.to_csv(config.SPY_DATA_PATH, index=False)
         else:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             spy_df = pd.read_csv(config.SPY_DATA_PATH)
         
-        # Now, consistently set the index for the spy_df DataFrame
+        # Now, consistently set the index for the spy_df DataFrame after loading
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
         spy_df.set_index('Date', inplace=True)
         # --- END OF CORRECTED LOGIC ---
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
+
