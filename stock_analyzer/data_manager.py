@@ -44,6 +44,11 @@ class DataManager:
         # Manually provide the correct column names.
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
         clean_df['Date'] = pd.to_datetime(clean_df['Date'])
+
+        numeric_cols = ['Close', 'High', 'Low', 'Open', 'Volume']
+        for col in numeric_cols:
+            spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
+        
         return clean_df
     
     def get_sp500_tickers(self):
@@ -105,22 +110,14 @@ class DataManager:
             print("⏳ Refreshing SPY data...")
             # 1. ACQUIRE DATA: Download fresh data from yfinance.
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
-            # Save it cleanly for next time.
-            spy_df_raw.to_csv(config.SPY_DATA_PATH, index=True)
+            #2. clean
+            spy_df = self._clean_spy_data(spy_df_raw)
+            #3. Save it for next time.
+            spy_df.to_csv(config.SPY_DATA_PATH, index=True)
         else:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             # 1. ACQUIRE DATA: Load the file naively from cache, making no assumptions.
-            spy_df_raw = pd.read_csv(config.SPY_DATA_PATH)
-
-        # 2. UNIVERSAL CLEANING: Apply the same cleaning function regardless of the source.
-        spy_df = self._clean_spy_data(spy_df_raw)
-
-        # 3. UNIVERSAL TYPE CONVERSION: This runs on the now-clean DataFrame.
-        numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-        for col in numeric_cols:
-            if col in spy_df.columns:
-                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
-        # --- END: UNIVERSAL LOGIC ---
+            spy_df = pd.read_csv(config.SPY_DATA_PATH)
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
