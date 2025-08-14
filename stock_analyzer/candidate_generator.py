@@ -58,6 +58,7 @@ class CandidateGenerator:
         Main method to run the feature engineering, model training, and candidate prediction.
         """
         features_df = self._create_features(price_df, fundamentals_df, spy_df)
+        features_df.sort_index(inplace=True)
         final_df = self._define_target(features_df)
 
         X = final_df.drop(columns=['target', 'Ticker', 'Adj Close'])
