@@ -130,7 +130,7 @@ class DataManager:
 
         # --- UNIVERSAL TYPE CONVERSION ---
         # This now runs on a DataFrame that is guaranteed to be clean.
-        #spy_df['Date'] = pd.to_datetime(spy_df['Date'])
+        spy_df['Date'] = pd.to_datetime(spy_df['Date'])
         #numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
         #for col in numeric_cols:
         #    if col in spy_df.columns:
