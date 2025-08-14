@@ -27,13 +27,8 @@ class CandidateGenerator:
             features_df[f'volatility_{lag}d'] = stock_returns.groupby(features_df['Ticker']).transform(lambda x: x.rolling(lag).std())
 
         # --- Market-Relative Features ---
-        # --- THIS IS THE CORRECTED LOGIC ---
-        # Calculate the market returns Series first
-        market_returns = np.log(spy_df['Close'] / spy_df['Close'].shift(1))
-        # Then, explicitly set its name. This is more robust than .rename()
-        market_returns.name = 'market_return'
+        market_returns = np.log(spy_df['Close'] / spy_df['Close'].shift(1)).rename('market_return')
         features_df = features_df.join(market_returns)
-        # --- END OF CORRECTED LOGIC ---
 
         def rolling_beta(stock_return, market_return, window=63):
             cov = stock_return.rolling(window=window).cov(market_return)
@@ -60,7 +55,6 @@ class CandidateGenerator:
     def generate_candidates(self, price_df, fundamentals_df, spy_df):
         """
         Main method to run the feature engineering, model training, and candidate prediction.
-        NOW RETURNS: A tuple containing (top_candidates_df, feature_importance_df)
         """
         features_df = self._create_features(price_df, fundamentals_df, spy_df)
         final_df = self._define_target(features_df)
