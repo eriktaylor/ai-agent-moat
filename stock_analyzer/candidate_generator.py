@@ -14,7 +14,6 @@ class CandidateGenerator:
         Engineers features for the model from the raw data.
         """
         print("🚀 Starting feature engineering...")
-        
         features_df = price_df.copy()
         grouped = features_df.groupby('Ticker')
 
@@ -44,23 +43,22 @@ class CandidateGenerator:
 
     def _define_target(self, df):
         """
-        Defines the target variable based on future relative performance.
+        Defines the target variable using a robust merge-based approach to avoid index alignment issues.
         """
         df_copy = df.copy()
         df_copy['future_return'] = df_copy.groupby('Ticker')['Adj Close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['Adj Close'] - 1
         df_copy = df_copy.dropna(subset=['future_return'])
-    
-        # 1. Calculate daily cutoffs as a separate Series (indexed by unique dates)
+
+        # Calculate daily cutoffs as a separate Series
         daily_cutoffs = df_copy.groupby('Date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
-    
-        # 2. Merge the cutoffs back into the main DataFrame.
-        #    This correctly maps the daily cutoff to every stock on that day.
+
+        # Merge the cutoffs back into the main DataFrame for stable alignment
         df_copy = df_copy.merge(daily_cutoffs, on='Date', how='left')
-    
-        # 3. Perform the comparison on aligned columns.
+
+        # Perform the comparison on perfectly aligned columns
         df_copy['target'] = (df_copy['future_return'] >= df_copy['cutoff']).astype(int)
-    
-        # 4. Clean up and return the result.
+
+        # Clean up and return the result
         return df_copy.drop(columns=['future_return', 'cutoff'])
 
     def generate_candidates(self, price_df, fundamentals_df, spy_df):
@@ -68,14 +66,27 @@ class CandidateGenerator:
         Main method to run the feature engineering, model training, and candidate prediction.
         """
         features_df = self._create_features(price_df, fundamentals_df, spy_df)
+        
+        # Sort index to ensure chronological order before defining the target
         features_df.sort_index(inplace=True)
+        
         final_df = self._define_target(features_df)
 
         X = final_df.drop(columns=['target', 'Ticker', 'Adj Close'])
         y = final_df['target']
 
         print("--- 🏋️ Training Production Model on All Data ---")
-        scale_pos_weight = y.value_counts()[0] / y.value_counts()[1]
+        
+        # --- Start of New, Robust scale_pos_weight Logic ---
+        # This prevents a KeyError if one class is missing from the data.
+        counts = y.value_counts()
+        if 0 in counts and 1 in counts:
+            scale_pos_weight = counts[0] / counts[1]
+        else:
+            # If one class is missing, default to no weighting.
+            scale_pos_weight = 1
+        # --- End of New Logic ---
+
         prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
         prod_model.fit(X, y)
 
