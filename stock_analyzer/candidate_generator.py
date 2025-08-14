@@ -12,13 +12,12 @@ class CandidateGenerator:
     def _create_features(self, df, spy_df):
         """
         Engineers features for the model from the raw data.
-        This version avoids using set_index to prevent state-related errors.
+        This version uses a robust index-then-reset pattern to ensure data alignment.
         """
         print("🚀 Starting feature engineering...")
-        features_df = df.copy()  # 'date' is a column here
+        features_df = df.copy()
 
-        # --- Momentum and Volatility Features ---
-        # These can be calculated before market data is added.
+        # --- Momentum and Volatility Features (Column-based) ---
         grouped_by_ticker = features_df.groupby('ticker')
         for lag in [5, 21, 63, 252]:
             features_df[f'return_{lag}d'] = grouped_by_ticker['adj close'].transform(lambda x: x.pct_change(lag))
@@ -31,19 +30,24 @@ class CandidateGenerator:
         spy_df['market_return'] = np.log(spy_df['close'] / spy_df['close'].shift(1))
         features_df = pd.merge(features_df, spy_df[['date', 'market_return']], on='date', how='left')
 
-        # --- Beta Calculation ---
-        # **CRITICAL FIX**: Perform the groupby AFTER the 'market_return' column has been merged.
+        # --- CRITICAL FIX for Beta Calculation ---
+        # Set a multi-index of (ticker, date) to perform time-series operations correctly.
+        features_df.set_index(['ticker', 'date'], inplace=True)
+
         def rolling_beta(x, window=63):
+            # x is now a DataFrame for one ticker, indexed by date.
             log_return = np.log(x['adj close'] / x['adj close'].shift(1))
             cov = log_return.rolling(window=window).cov(x['market_return'])
             market_var = x['market_return'].rolling(window=window).var()
-            return cov / market_var # Return the actual beta value
+            return cov / market_var
 
-        # Apply the function to each ticker group.
-        beta_values = features_df.groupby('ticker').apply(rolling_beta).rename('beta_63d').reset_index()
-        
-        # Merge the calculated beta values back into the main DataFrame.
-        features_df = pd.merge(features_df, beta_values, on=['date', 'ticker'], how='left')
+        # Apply the calculation. The result will be aligned by the (ticker, date) index.
+        beta_values = features_df.groupby(level='ticker').apply(rolling_beta)
+        features_df['beta_63d'] = beta_values
+
+        # Restore 'ticker' and 'date' to be columns for the next steps.
+        features_df.reset_index(inplace=True)
+        # --- END FIX ---
         
         # --- Clean Up ---
         features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return'])
@@ -59,6 +63,7 @@ class CandidateGenerator:
         df_copy['future_return'] = df_copy.groupby('ticker')['adj close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['adj close'] - 1
         df_copy = df_copy.dropna(subset=['future_return'])
 
+        # This groupby on 'date' will now succeed.
         daily_cutoffs = df_copy.groupby('date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
 
         df_copy = df_copy.merge(daily_cutoffs, on='date', how='left')
@@ -87,6 +92,7 @@ class CandidateGenerator:
         
         final_df = self._define_target(features_df)
         
+        # Set date as index only after all column-based operations are complete
         if 'date' in final_df.columns:
             final_df.set_index('date', inplace=True)
 
@@ -131,3 +137,4 @@ class CandidateGenerator:
         top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
     
         return top_candidates, feature_imp_sorted
+
