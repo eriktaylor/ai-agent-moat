@@ -64,76 +64,75 @@ class CandidateGenerator:
 
 
     # In stock_analyzer/candidate_generator.py
-
-def generate_candidates(self, price_df, fundamentals_df, spy_df):
-    """
-    Main method to run feature engineering, model training, and candidate prediction.
-    """
-    # --- START: FIX ---
-    # 1. Standardize all column names to lowercase to prevent mismatches.
-    price_df.columns = price_df.columns.str.lower()
-    fundamentals_df.columns = fundamentals_df.columns.str.lower()
-    spy_df.columns = spy_df.columns.str.lower()
+    def generate_candidates(self, price_df, fundamentals_df, spy_df):
+        """
+        Main method to run feature engineering, model training, and candidate prediction.
+        """
+        # --- START: FIX ---
+        # 1. Standardize all column names to lowercase to prevent mismatches.
+        price_df.columns = price_df.columns.str.lower()
+        fundamentals_df.columns = fundamentals_df.columns.str.lower()
+        spy_df.columns = spy_df.columns.str.lower()
+        
+        # Ensure 'date' columns are in datetime format
+        price_df['date'] = pd.to_datetime(price_df['date'])
+        spy_df['date'] = pd.to_datetime(spy_df['date'])
+        
+        # 2. Perform a LEFT merge on 'ticker' only. This creates our primary DataFrame.
+        df = pd.merge(price_df, fundamentals_df, on='ticker', how='left')
+        # --- END: FIX ---
     
-    # Ensure 'date' columns are in datetime format
-    price_df['date'] = pd.to_datetime(price_df['date'])
-    spy_df['date'] = pd.to_datetime(spy_df['date'])
+        # --- START: MODIFIED LOGIC ---
+        # 3. Call feature creation using the new 'df' as the main input.
+        # We pass 'df' instead of 'price_df' and no longer need 'fundamentals_df' here.
+        features_df = self._create_features(df, spy_df)
+        
+        # 4. Sort index and define the target variable. This part remains the same.
+        features_df.sort_index(inplace=True)
+        final_df = self._define_target(features_df)
     
-    # 2. Perform a LEFT merge on 'ticker' only. This creates our primary DataFrame.
-    df = pd.merge(price_df, fundamentals_df, on='ticker', how='left')
-    # --- END: FIX ---
-
-    # --- START: MODIFIED LOGIC ---
-    # 3. Call feature creation using the new 'df' as the main input.
-    # We pass 'df' instead of 'price_df' and no longer need 'fundamentals_df' here.
-    features_df = self._create_features(df, spy_df)
+        # 5. Create the feature set (X) and target (y) for the model.
+        #    Use the lowercased column names ('ticker', 'adj close').
+        X = final_df.drop(columns=['target', 'ticker', 'adj close'])
+        y = final_df['target']
     
-    # 4. Sort index and define the target variable. This part remains the same.
-    features_df.sort_index(inplace=True)
-    final_df = self._define_target(features_df)
-
-    # 5. Create the feature set (X) and target (y) for the model.
-    #    Use the lowercased column names ('ticker', 'adj close').
-    X = final_df.drop(columns=['target', 'ticker', 'adj close'])
-    y = final_df['target']
-
-    print("--- 🏋️ Training Production Model on All Data ---")
+        print("--- 🏋️ Training Production Model on All Data ---")
+        
+        # Scale_pos_weight logic remains the same.
+        counts = y.value_counts()
+        if 0 in counts and 1 in counts:
+            scale_pos_weight = counts[0] / counts[1]
+        else:
+            scale_pos_weight = 1
     
-    # Scale_pos_weight logic remains the same.
-    counts = y.value_counts()
-    if 0 in counts and 1 in counts:
-        scale_pos_weight = counts[0] / counts[1]
-    else:
-        scale_pos_weight = 1
-
-    prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
-    prod_model.fit(X, y)
-
-    feature_imp = pd.DataFrame(
-        sorted(zip(prod_model.feature_importances_, X.columns)),
-        columns=['Value','Feature']
-    )
-    feature_imp_sorted = feature_imp.sort_values(by="Value", ascending=False).head(10)
-
-    print("---  прогнозирование on Most Recent Data ---")
-    latest_data = final_df.loc[final_df.index == final_df.index.max()]
+        prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
+        prod_model.fit(X, y)
     
-    # Use lowercased column names here as well.
-    latest_X = latest_data.drop(columns=['target', 'ticker', 'adj close'])
-
-    if latest_X.empty:
-        print("⚠️ No recent data available for prediction.")
-        return pd.DataFrame(), pd.DataFrame()
-
-    probabilities = prod_model.predict_proba(latest_X)[:, 1]
-    candidates = pd.DataFrame({
-        'Ticker': latest_data['ticker'], # Use lowercase 'ticker'
-        'Quant_Score': probabilities
-    }).sort_values(by='Quant_Score', ascending=False).reset_index(drop=True)
-
-    top_candidates = candidates.head(config.TOP_N_CANDIDATES)
-
-    print(f"💾 Saving top {len(top_candidates)} candidates to {config.CANDIDATE_RESULTS_PATH}...")
-    top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
-
-    return top_candidates, feature_imp_sorted
+        feature_imp = pd.DataFrame(
+            sorted(zip(prod_model.feature_importances_, X.columns)),
+            columns=['Value','Feature']
+        )
+        feature_imp_sorted = feature_imp.sort_values(by="Value", ascending=False).head(10)
+    
+        print("---  прогнозирование on Most Recent Data ---")
+        latest_data = final_df.loc[final_df.index == final_df.index.max()]
+        
+        # Use lowercased column names here as well.
+        latest_X = latest_data.drop(columns=['target', 'ticker', 'adj close'])
+    
+        if latest_X.empty:
+            print("⚠️ No recent data available for prediction.")
+            return pd.DataFrame(), pd.DataFrame()
+    
+        probabilities = prod_model.predict_proba(latest_X)[:, 1]
+        candidates = pd.DataFrame({
+            'Ticker': latest_data['ticker'], # Use lowercase 'ticker'
+            'Quant_Score': probabilities
+        }).sort_values(by='Quant_Score', ascending=False).reset_index(drop=True)
+    
+        top_candidates = candidates.head(config.TOP_N_CANDIDATES)
+    
+        print(f"💾 Saving top {len(top_candidates)} candidates to {config.CANDIDATE_RESULTS_PATH}...")
+        top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
+    
+        return top_candidates, feature_imp_sorted
