@@ -35,6 +35,7 @@ class DataManager:
             # If any error occurs reading the file, treat it as stale.
             return True
 
+
     def _clean_spy_data(self, df_raw):
         """
         A consistent cleaning function to handle both clean (from yfinance)
@@ -44,10 +45,11 @@ class DataManager:
         # Manually provide the correct column names.
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
         clean_df['Date'] = pd.to_datetime(clean_df['Date'])
-
+    
         numeric_cols = ['Close', 'High', 'Low', 'Open', 'Volume']
         for col in numeric_cols:
-            spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
+            # Correctly apply to the clean_df
+            clean_df[col] = pd.to_numeric(clean_df[col], errors='coerce')
         
         return clean_df
     
@@ -106,18 +108,20 @@ class DataManager:
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)
         
         # --- START: UNIVERSAL LOGIC FOR SPY DATA ---
+        # First, acquire the raw data from either the cache or a fresh download.
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
-            # 1. ACQUIRE DATA: Download fresh data from yfinance.
+            # 1. ACQUIRE DATA: Download fresh data.
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
-            #2. clean
-            spy_df = self._clean_spy_data(spy_df_raw)
-            #3. Save it for next time.
-            spy_df.to_csv(config.SPY_DATA_PATH, index=True)
+            # 3. Save the RAW data for next time.
+            spy_df_raw.to_csv(config.SPY_DATA_PATH, index=True)
         else:
-            print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
-            # 1. ACQUIRE DATA: Load the file naively from cache, making no assumptions.
-            spy_df = pd.read_csv(config.SPY_DATA_PATH)
+            print(f"✅ Loading cached SPY data from {config.SPY_DATA_PATH}...")
+            # 1. ACQUIRE DATA: Load the raw file from the cache.
+            spy_df_raw = pd.read_csv(config.SPY_DATA_PATH)
+        
+        # Second, apply the cleaning function universally to the raw DataFrame.
+        spy_df = self._clean_spy_data(spy_df_raw)
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
