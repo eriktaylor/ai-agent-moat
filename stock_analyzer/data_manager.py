@@ -23,7 +23,6 @@ class DataManager:
             print(f"Cache file '{os.path.basename(path)}' not found. Marked as stale.")
             return True
         try:
-            # Efficiently read only the 'Date' column to check the last date
             df = pd.read_csv(path, usecols=['Date'])
             if df.empty:
                 print(f"Cache file '{os.path.basename(path)}' is empty. Marked as stale.")
@@ -33,7 +32,6 @@ class DataManager:
             print(f"Latest data in '{os.path.basename(path)}' is from {last_date_in_file.date()} ({data_age.days} days old).")
             return data_age > timedelta(days=max_age_days)
         except (ValueError, KeyError):
-            # This handles files without a 'Date' column gracefully (like fundamentals)
             print(f"Could not determine data age from '{os.path.basename(path)}'. Using file modification time instead.")
             file_mod_time = datetime.fromtimestamp(os.path.getmtime(path))
             file_age = datetime.now() - file_mod_time
@@ -64,7 +62,6 @@ class DataManager:
             tickers = self.get_sp500_tickers()
             if not tickers: return None, None, None
             price_df = yf.download(tickers, period=config.YFINANCE_PERIOD, auto_adjust=False).stack(level=1).rename_axis(['Date', 'Ticker']).reset_index()
-            print(f"💾 Saving new price data to {config.PRICE_DATA_PATH}...")
             price_df.to_csv(config.PRICE_DATA_PATH, index=False)
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
@@ -79,35 +76,29 @@ class DataManager:
             
         available_tickers = price_df['Ticker'].unique().tolist()
         
-        # Logic for fundamentals remains tied to the price data's freshness
         if price_data_is_stale:
             print("⏳ Fundamental data cache is being refreshed because price data was stale...")
             data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")]
             fundamentals_df = pd.DataFrame(data).set_index('Ticker')
             required_cols = ['trailingPE', 'forwardPE', 'priceToBook', 'enterpriseToEbitda', 'profitMargins']
             fundamentals_df = fundamentals_df[[col for col in required_cols if col in fundamentals_df.columns]]
-            print(f"💾 Saving new fundamental data to {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH)
         else:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
         
-        # --- THIS IS THE CORRECTED LOGIC FOR SPY DATA ---
+        # --- THIS IS THE FINAL, CORRECTED LOGIC FOR SPY DATA ---
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
-            # Use reset_index() to turn the 'Date' index into a column
-            spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True).reset_index()
-            # Save without the pandas index, ensuring 'Date' is a named column
-            spy_df.to_csv(config.SPY_DATA_PATH, index=False)
-        else:
-            print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
-            spy_df = pd.read_csv(config.SPY_DATA_PATH)
+            spy_df = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
+            # Save the index (which is the Date) to the CSV
+            spy_df.to_csv(config.SPY_DATA_PATH, index=True)
         
-        # Now, consistently set the index for the spy_df DataFrame after loading
-        spy_df['Date'] = pd.to_datetime(spy_df['Date'])
-        spy_df.set_index('Date', inplace=True)
+        # Now, consistently load the data from the cache.
+        # index_col=0 tells pandas to use the first column (our saved Date) as the index.
+        # parse_dates=True tells pandas to convert that index to datetime objects.
+        spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
         # --- END OF CORRECTED LOGIC ---
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
-
