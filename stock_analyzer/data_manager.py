@@ -95,7 +95,7 @@ class DataManager:
         else:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             # Load from cache, ensuring the first column becomes the index and is parsed as dates.
-            spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
+            spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True, header=1)
 
         # Consistently ensure numeric columns are the correct data type, regardless of source.
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
