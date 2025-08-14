@@ -40,12 +40,11 @@ class DataManager:
         A consistent cleaning function to handle both clean (from yfinance)
         and malformed (from old cache file) SPY DataFrames.
         """
-    
         clean_df = df_raw.iloc[3:].copy()
         # Manually provide the correct column names.
-        clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']                        
+        clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
         return clean_df
-
+    
     def get_sp500_tickers(self):
         """
         Fetches the current list of S&P 500 tickers.
