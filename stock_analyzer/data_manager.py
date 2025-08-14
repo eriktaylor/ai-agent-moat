@@ -41,12 +41,12 @@ class DataManager:
         and malformed (from old cache file) SPY DataFrames.
         """
         # The malformed CSV, when read naively, has a 'Price' column from its junk header.
-        # A clean DataFrame has 'Date' as its first column when read from a fresh CSV.
         if 'Price' in df_raw.columns:
             print("🔧 Malformed DataFrame detected. Applying corrective formatting...")
             
-            # The actual data starts at row index 3 of the malformed file.
-            clean_df = df_raw.iloc[3:].copy()
+            # The actual data starts at DataFrame row index 2.
+            # CORRECTED SLICE: Use iloc[2:] to start from the first row of data.
+            clean_df = df_raw.iloc[2:].copy()
             
             # Manually provide the correct column names.
             clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
