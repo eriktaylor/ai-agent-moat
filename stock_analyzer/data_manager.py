@@ -84,7 +84,7 @@ class DataManager:
             return None, None, None
         
         price_df['Date'] = pd.to_datetime(price_df['Date'])
-        price_df.set_index('Date', inplace=True)
+        #price_df.set_index('Date', inplace=True)
             
         available_tickers = price_df['Ticker'].unique().tolist()
         
