@@ -43,6 +43,8 @@ class DataManager:
         clean_df = df_raw.iloc[3:].copy()
         # Manually provide the correct column names.
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']
+        clean_df['Date'] = pd.to_datetime(price_df['Date'])
+        clean_df.set_index('Date', inplace=True)
         return clean_df
     
     def get_sp500_tickers(self):
