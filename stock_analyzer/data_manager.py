@@ -35,12 +35,12 @@ class DataManager:
             # If any error occurs reading the file, treat it as stale.
             return True
 
-     def _clean_spy_data(self, df_raw):
-        """
-        A consistent cleaning function to handle both clean (from yfinance)
-        and malformed (from old cache file) SPY DataFrames.
-        """
-
+    def _clean_spy_data(self, df_raw):
+        """
+        A consistent cleaning function to handle both clean (from yfinance)
+        and malformed (from old cache file) SPY DataFrames.
+        """
+    
         clean_df = df_raw.iloc[3:].copy()
         # Manually provide the correct column names.
         clean_df.columns = ['Date', 'Close', 'High', 'Low', 'Open', 'Volume']                        
