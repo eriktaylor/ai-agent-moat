@@ -110,31 +110,36 @@ class DataManager:
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)
         
         # --- START: UNIVERSAL LOGIC FOR SPY DATA ---
-        # First, acquire the raw data from either the cache or a fresh download.
+
+        # Check if the data file is missing or stale.
         if self._is_data_stale(config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS):
             print("⏳ Refreshing SPY data...")
-            # 1. ACQUIRE DATA: Download fresh data.
+            # 1. ACQUIRE: Download fresh data from yfinance.
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
-            # 2. CLEAN: Prepare the clean DataFrame.
+            
+            # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
             spy_df = spy_df_raw.copy()
-            spy_df.reset_index(inplace=True) # Turns the 'Date' index into a 'Date' column.
+            spy_df.reset_index(inplace=True) # Turns the 'Date' index into a column.
             
-            # At this point, spy_df has 6 columns: ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
-            
-            # 3. SAVE: Save the clean, consistently formatted data.
-            spy_df.to_csv(config.SPY_DATA_PATH, index=False) # Use index=False
+            # 3. SAVE: Save the clean, consistently formatted data for next time.
+            spy_df.to_csv(config.SPY_DATA_PATH, index=False)
+        
         else:
-            print(f"✅ Loading cached SPY data from {config.SPY_DATA_PATH}...")
-            # 1. ACQUIRE DATA: Load the raw file from the cache.
-            spy_df_raw = pd.read_csv(config.SPY_DATA_PATH)
-
+            print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
+            # ACQUIRE: Load the already-clean file directly into the final variable.
+            spy_df = pd.read_csv(config.SPY_DATA_PATH)
+        
         # --- UNIVERSAL TYPE CONVERSION ---
-        # This now runs on a DataFrame that is guaranteed to be clean.
+        # This code now runs on a DataFrame that is guaranteed to be clean and is always named 'spy_df'.
+        
+        # Convert 'Date' column to datetime objects.
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
-        #numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
-        #for col in numeric_cols:
-        #    if col in spy_df.columns:
-        #        spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
+        
+        # Convert numeric columns to numeric types.
+        numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in numeric_cols:
+            if col in spy_df.columns:
+                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
