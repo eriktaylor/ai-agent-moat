@@ -115,15 +115,27 @@ class DataManager:
             print("⏳ Refreshing SPY data...")
             # 1. ACQUIRE DATA: Download fresh data.
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
-            # 3. Save the RAW data for next time.
-            spy_df_raw.to_csv(config.SPY_DATA_PATH, index=True)
+            # 2. CLEAN: Prepare the clean DataFrame.
+            spy_df = spy_df_raw.copy()
+            spy_df.reset_index(inplace=True) # Turns the 'Date' index into a 'Date' column.
+            
+            # At this point, spy_df has 6 columns: ['Date', 'Open', 'High', 'Low', 'Close', 'Volume']
+            
+            # 3. SAVE: Save the clean, consistently formatted data.
+            spy_df.to_csv(config.SPY_DATA_PATH, index=False) # Use index=False
         else:
             print(f"✅ Loading cached SPY data from {config.SPY_DATA_PATH}...")
             # 1. ACQUIRE DATA: Load the raw file from the cache.
             spy_df_raw = pd.read_csv(config.SPY_DATA_PATH)
-        
-        # Second, apply the cleaning function universally to the raw DataFrame.
-        spy_df = self._clean_spy_data(spy_df_raw)
+
+        # --- UNIVERSAL TYPE CONVERSION ---
+        # This now runs on a DataFrame that is guaranteed to be clean.
+        spy_df['Date'] = pd.to_datetime(spy_df['Date'])
+        numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume']
+        for col in numeric_cols:
+            if col in spy_df.columns:
+                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
+
 
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
