@@ -8,11 +8,11 @@ import config
 class CandidateGenerator:
     """
     Uses a machine learning model to screen and rank stocks based on quantitative factors.
+    This version includes fixes for data leakage and improved data handling.
     """
     def _create_features(self, df, spy_df):
         """
         Engineers features for the model from the raw data.
-        This version uses a robust, column-based approach to prevent state-related errors.
         """
         print("🚀 Starting feature engineering...")
         features_df = df.copy()
@@ -30,36 +30,42 @@ class CandidateGenerator:
         spy_df['market_return'] = np.log(spy_df['close'] / spy_df['close'].shift(1))
         features_df = pd.merge(features_df, spy_df[['date', 'market_return']], on='date', how='left')
 
-        # --- Beta Calculation ---
+        # --- Beta Calculation (Robust Method) ---
+        # This method avoids creating the 'level_1' artifact.
         def calculate_beta(sub_df, window=63):
             log_return = np.log(sub_df['adj close'] / sub_df['adj close'].shift(1))
             market_var = sub_df['market_return'].rolling(window=window).var()
             covariance = log_return.rolling(window=window).cov(sub_df['market_return'])
-            beta = covariance / market_var
-            return pd.DataFrame({'beta_63d': beta, 'date': sub_df['date']})
+            return covariance / market_var
 
-        beta_df = features_df.groupby('ticker').apply(calculate_beta).reset_index()
+        # Group by ticker, apply the function, and rename the resulting series.
+        beta_series = features_df.groupby('ticker').apply(calculate_beta)
+        beta_df = beta_series.rename('beta_63d').reset_index()
         
         features_df = pd.merge(features_df, beta_df, on=['date', 'ticker'], how='left')
         
         # --- Clean Up ---
         features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return'])
         
-        return features_df.dropna()
+        # --- Selective Dropna ---
+        # Instead of a global dropna, we only drop rows where critical long-term features are missing.
+        # This preserves more of the dataset for training.
+        critical_features = ['return_252d', 'volatility_252d', 'beta_63d']
+        return features_df.dropna(subset=critical_features)
 
 
     def _define_target(self, df):
         """
-        Defines the target variable. This function expects 'df' to have a 'date' column.
+        Defines the target variable.
         """
         df_copy = df.copy()
         df_copy['future_return'] = df_copy.groupby('ticker')['adj close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['adj close'] - 1
+        
+        # Drop rows where future return can't be calculated
         df_copy = df_copy.dropna(subset=['future_return'])
 
         daily_cutoffs = df_copy.groupby('date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
-
         df_copy = df_copy.merge(daily_cutoffs, on='date', how='left')
-
         df_copy['target'] = (df_copy['future_return'] >= df_copy['cutoff']).astype(int)
 
         return df_copy.drop(columns=['future_return', 'cutoff'])
@@ -78,57 +84,57 @@ class CandidateGenerator:
         price_df['date'] = pd.to_datetime(price_df['date'])
         spy_df['date'] = pd.to_datetime(spy_df['date'])
         
-        # --- CRITICAL FIX ---
-        # Proactively drop the 'date' column from fundamentals_df before merging.
-        # This prevents pandas from creating conflicting 'date_x' and 'date_y' columns,
-        # which was the root cause of the KeyError.
         df = pd.merge(
             price_df,
             fundamentals_df.drop(columns=['date'], errors='ignore'),
             on='ticker',
             how='left'
         )
-        # --- END FIX ---
     
         features_df = self._create_features(df, spy_df)
-        
         final_df = self._define_target(features_df)
         
-        if 'date' in final_df.columns:
-            final_df.set_index('date', inplace=True)
-
-        X = final_df.drop(columns=['target', 'ticker', 'adj close'])
-        y = final_df['target']
-    
-        print("--- 🏋️ Training Production Model on All Data ---")
+        # --- FIX for Data Leakage ---
+        # We now create a clean separation between training and prediction data.
+        max_date = final_df['date'].max()
         
-        counts = y.value_counts()
+        train_df = final_df[final_df['date'] < max_date]
+        predict_df = final_df[final_df['date'] == max_date]
+
+        if predict_df.empty:
+            print("⚠️ No recent data available for prediction.")
+            return pd.DataFrame(), pd.DataFrame()
+
+        # Set date as index for the model training part
+        train_df = train_df.set_index('date')
+        
+        X_train = train_df.drop(columns=['target', 'ticker', 'adj close'])
+        y_train = train_df['target']
+    
+        print(f"--- 🏋️ Training Production Model on Data up to {train_df.index.max().date()} ---")
+        
+        counts = y_train.value_counts()
         if 0 in counts and 1 in counts and counts[1] > 0:
             scale_pos_weight = counts[0] / counts[1]
         else:
             scale_pos_weight = 1
     
         prod_model = lgb.LGBMClassifier(objective='binary', scale_pos_weight=scale_pos_weight, random_state=42)
-        prod_model.fit(X, y)
+        prod_model.fit(X_train, y_train)
     
         feature_imp = pd.DataFrame(
-            sorted(zip(prod_model.feature_importances_, X.columns)),
+            sorted(zip(prod_model.feature_importances_, X_train.columns)),
             columns=['Value','Feature']
         )
         feature_imp_sorted = feature_imp.sort_values(by="Value", ascending=False).head(10)
     
-        print("--- Predicting on Most Recent Data ---")
-        latest_data = final_df.loc[final_df.index == final_df.index.max()]
+        print(f"--- Predicting on Most Recent Data ({max_date.date()}) ---")
         
-        if latest_data.empty:
-            print("⚠️ No recent data available for prediction.")
-            return pd.DataFrame(), pd.DataFrame()
-
-        latest_X = latest_data.drop(columns=['target', 'ticker', 'adj close'])
+        X_predict = predict_df.set_index('date').drop(columns=['target', 'ticker', 'adj close'])
     
-        probabilities = prod_model.predict_proba(latest_X)[:, 1]
+        probabilities = prod_model.predict_proba(X_predict)[:, 1]
         candidates = pd.DataFrame({
-            'Ticker': latest_data['ticker'],
+            'Ticker': predict_df['ticker'],
             'Quant_Score': probabilities
         }).sort_values(by='Quant_Score', ascending=False).reset_index(drop=True)
     
