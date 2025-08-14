@@ -98,13 +98,6 @@ class DataManager:
             print(f"✅ Loading fresh cached SPY data from {config.SPY_DATA_PATH}...")
             # Load from cache, ensuring the first column becomes the index and is parsed as dates.
             spy_df = pd.read_csv(config.SPY_DATA_PATH, index_col=0, parse_dates=True)
-
-        # As a final safety measure, ensure all price-related columns are numeric.
-        # This handles any potential issues when reading from the cache.
-        cols_to_numeric = ['Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
-        for col in cols_to_numeric:
-            if col in spy_df.columns:
-                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce')
         # --- END OF CORRECTED LOGIC ---
 
         print("\n--- ✅ All data loaded successfully! ---")
