@@ -16,7 +16,6 @@ class CandidateGenerator:
         print("🚀 Starting feature engineering...")
         features_df = df.copy()
         
-        # --- Set Date as Index ---
         # Ensure date is the index for time-series operations
         if 'date' in features_df.columns:
             features_df.set_index('date', inplace=True)
@@ -33,35 +32,38 @@ class CandidateGenerator:
             features_df[f'volatility_{lag}d'] = stock_returns.groupby(features_df['ticker']).transform(lambda x: x.rolling(lag).std())
 
         # --- Market-Relative Features ---
-        # Ensure spy_df has a date index for joining
         if 'date' in spy_df.columns:
             spy_df.set_index('date', inplace=True)
             
         market_returns = np.log(spy_df['close'] / spy_df['close'].shift(1)).rename('market_return')
         
-        # --- FIX for Duplicate Labels Error ---
-        # The .join() method fails because features_df has a non-unique 'date' index.
-        # We switch to .merge() and then set the index back to 'date' so the rest of the function works as expected.
-        features_df = features_df.reset_index().merge(market_returns.to_frame(), on='date', how='left').set_index('date')
-        # --- END FIX ---
+        # Use a robust merge to add market returns
+        features_df = features_df.reset_index().merge(market_returns.to_frame(), on='date', how='left')
 
         def rolling_beta(stock_return, market_return, window=63):
+            # The stock_return and market_return are now aligned within the apply function
             cov = stock_return.rolling(window=window).cov(market_return)
             market_var = market_return.rolling(window=window).var()
             return cov / market_var
-            
-        # Need to group by ticker to calculate beta correctly for each stock
-        beta_series = features_df.groupby('ticker').apply(lambda x: rolling_beta(np.log(x['adj close'] / x['adj close'].shift(1)), x['market_return']))
-        # The result from apply might have a multi-index, so we need to align it properly
-        features_df['beta_63d'] = beta_series.reset_index(level=0, drop=True)
+        
+        # --- FIX for Beta Calculation Alignment ---
+        # The previous assignment failed due to index misalignment. A robust merge is safer.
+        # Calculate beta. The result is a Series with a (ticker, date) MultiIndex.
+        beta_series = features_df.groupby('ticker').apply(
+            lambda x: rolling_beta(np.log(x['adj close'] / x['adj close'].shift(1)), x['market_return'])
+        )
 
+        # Convert the resulting series to a DataFrame for merging.
+        beta_df = beta_series.to_frame(name='beta_63d').reset_index()
+
+        # Merge the beta values back using a robust merge on both date and ticker.
+        features_df = pd.merge(features_df, beta_df, on=['date', 'ticker'], how='left')
+        # --- END FIX ---
 
         # --- Clean Up ---
-        # The fundamentals are already merged. We just need to drop raw price columns.
         features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return'])
         
-        # Reset index to have 'date' and 'ticker' as columns for the next step
-        return features_df.dropna().reset_index()
+        return features_df.dropna()
 
 
     def _define_target(self, df):
@@ -72,16 +74,12 @@ class CandidateGenerator:
         df_copy['future_return'] = df_copy.groupby('ticker')['adj close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['adj close'] - 1
         df_copy = df_copy.dropna(subset=['future_return'])
 
-        # Calculate daily cutoffs as a separate Series
         daily_cutoffs = df_copy.groupby('date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
 
-        # Merge the cutoffs back into the main DataFrame for stable alignment
         df_copy = df_copy.merge(daily_cutoffs, on='date', how='left')
 
-        # Perform the comparison on perfectly aligned columns
         df_copy['target'] = (df_copy['future_return'] >= df_copy['cutoff']).astype(int)
 
-        # Clean up and return the result
         return df_copy.drop(columns=['future_return', 'cutoff'])
 
 
@@ -89,32 +87,24 @@ class CandidateGenerator:
         """
         Main method to run feature engineering, model training, and candidate prediction.
         """
-        # 1. Standardize all column names to lowercase to prevent mismatches.
         price_df.columns = price_df.columns.str.lower()
         fundamentals_df.columns = fundamentals_df.columns.str.lower()
         spy_df.columns = spy_df.columns.str.lower()
         
-        # Add ticker to spy_df for consistency
         spy_df['ticker'] = 'SPY'
         
-        # Ensure 'date' columns are in datetime format
         price_df['date'] = pd.to_datetime(price_df['date'])
         spy_df['date'] = pd.to_datetime(spy_df['date'])
         
-        # 2. Perform a LEFT merge on 'ticker' only. This creates our primary DataFrame.
         df = pd.merge(price_df, fundamentals_df, on='ticker', how='left')
     
-        # 3. Call feature creation using the new 'df' as the main input.
         features_df = self._create_features(df, spy_df)
         
-        # 4. Define the target variable.
         final_df = self._define_target(features_df)
         
-        # Set date as index for time-series based operations (like selecting latest data)
         if 'date' in final_df.columns:
             final_df.set_index('date', inplace=True)
 
-        # 5. Create the feature set (X) and target (y) for the model.
         X = final_df.drop(columns=['target', 'ticker', 'adj close'])
         y = final_df['target']
     
