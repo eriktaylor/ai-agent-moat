@@ -30,7 +30,19 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 ## Project Evolution
 
-**Most Recent Update (July 23, 2025)**:
+**Most Recent Update (August 14, 2025)**:
+
+* Added advanced ticker validation to prevent analysis of delisted, defunct, or irrelevant symbols.
+
+* Implemented persistent search caching with automatic TTL (Time-To-Live) based pruning to improve runtime efficiency and reduce redundant queries.
+
+* Enhanced candidate generation and agentic recommendation scripts to run on a scheduled weekly GitHub Actions workflow.
+
+* Structured search queries for improved relevance and freshness, reducing LLM hallucinations in analysis.
+
+* Prepared groundwork for upcoming portfolio manager module to track and retain select tickers between runs.
+
+**Update (July 23, 2025)**:
 
 * Added **Streamlit Community Cloud** deployment of agent.
 
