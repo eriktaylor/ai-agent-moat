@@ -9,7 +9,7 @@ import pandas as pd
 import yfinance as yf
 from langchain_google_genai import ChatGoogleGenerativeAI
 try:
-    # Prefer the community package (old import is deprecated)
+    # Prefer non-deprecated package if available
     from langchain_google_community import GoogleSearchAPIWrapper
 except Exception:
     from langchain_community.utilities import GoogleSearchAPIWrapper
@@ -25,15 +25,59 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-# Simple, conservative US-ticker regex (allows e.g., BRK.B)
-TICKER_REGEX = re.compile(r"\b[A-Z]{1,5}(?:\.[A-Z])?\b")
+# ------------------------
+# Constants / Helpers
+# ------------------------
+# Conservative US ticker regex (blocks single-letter unless whitelisted; allows BRK.B)
+TICKER_REGEX = re.compile(r"\b[A-Z]{2,5}(?:\.[A-Z])?\b")
+SINGLE_LETTER_WHITELIST = {"F", "T", "C"}  # add if desired
+
+VALID_US_EXCHANGES = {"NMS", "NYQ", "NCM", "NGM", "BATS", "ASE", "PCX"}  # Nasdaq/NYSE family
+
+SEARCH_CACHE_DIR = getattr(config, "SEARCH_CACHE_DIR", "data/search_cache")
+os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
+
+def _safe_json_loads(s: str):
+    """Lenient JSON extraction from an LLM response."""
+    clean = re.sub(r"```(?:json)?|```", "", s).strip()
+    m = re.search(r"\{.*?\}", clean, flags=re.DOTALL)  # non-greedy
+    if not m:
+        fallback = clean.replace("'", '"')
+        m = re.search(r"\{.*?\}", fallback, flags=re.DOTALL)
+        if not m:
+            return None
+        clean = fallback
+    try:
+        return json.loads(m.group(0))
+    except Exception:
+        return None
+
+def _normalize_judgment(j: dict) -> dict:
+    """Enforce consistency between rating and recommendation."""
+    try:
+        rating = float(j.get("rating", 0.0))
+    except Exception:
+        rating = 0.0
+    rec = (j.get("recommendation") or "Neutral").title()
+    if rating >= 0.66:
+        rec = "Buy"
+    elif rating <= 0.33:
+        rec = "Sell"
+    else:
+        rec = "Hold" if rec not in {"Hold", "Neutral"} else rec
+    j["rating"] = rating
+    j["recommendation"] = rec
+    j["justification"] = j.get("justification", "")[:1000]  # keep CSV tidy
+    return j
+
+def _canonical_upper(s: str) -> str:
+    return (s or "").strip().upper()
 
 class AgenticLayer:
     """
-    Orchestrates multi-agent qualitative analysis on stock candidates.
-    1. Scout Agent: Finds new, non-S&P 500 stocks.
-    2. Analyst Agent: Performs deep-dive analysis using three personas.
-    3. Ranking Judge Agent: Synthesizes analysis into a final rating and recommendation.
+    Scout: find new non-index tickers from news
+    Analysts: three personas write constrained reports
+    Judge: merges into a unified JSON (rating/recommendation/justification)
     """
 
     def __init__(self):
@@ -45,16 +89,57 @@ class AgenticLayer:
         self.analysis_cache = {}
 
     # ------------------------
+    # Caching wrapper (weekly buckets)
+    # ------------------------
+    def _cached_search(self, query: str, num_results: int):
+        bucket = (datetime.utcnow().date().toordinal() // 7)  # refresh weekly
+        key = re.sub(r"[^a-zA-Z0-9]+", "_", f"{query}")[:120]
+        path = os.path.join(SEARCH_CACHE_DIR, f"{key}_{bucket}.json")
+        if os.path.exists(path):
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception:
+                pass
+        results = self.search_wrapper.results(query, num_results=num_results)
+        try:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(results, f)
+        except Exception:
+            pass
+        return results
+
+    # ------------------------
+    # Ticker validation
+    # ------------------------
+    def _is_valid_equity(self, t: str) -> bool:
+        t = _canonical_upper(t)
+        if len(t) == 1 and t not in SINGLE_LETTER_WHITELIST:
+            return False
+        try:
+            tk = yf.Ticker(t)
+            info = tk.info or {}
+            fast = getattr(tk, "fast_info", None) or {}
+            has_price = fast.get("last_price") or info.get("regularMarketPrice")
+            is_equity = (info.get("quoteType") == "EQUITY")
+            on_us_exch = (info.get("exchange") in VALID_US_EXCHANGES)
+            has_name_or_cap = info.get("shortName") or info.get("longName") or info.get("marketCap")
+            return bool(has_price and is_equity and on_us_exch and has_name_or_cap)
+        except Exception:
+            return False
+
+    # ------------------------
     # Scout Agent
     # ------------------------
     def _run_scout_agent(self, known_tickers):
         logging.info("Running Scout Agent to find new tickers...")
         new_tickers = set()
 
+        # Bias queries toward recent years to keep results fresh.
         queries = [
-            "top performing small cap stocks 2025",
-            "undervalued growth stocks outside S&P 500",
-            "companies with recent technological breakthroughs stock"
+            "top performing small cap stocks 2024 OR 2025",
+            "undervalued growth stocks outside S&P 500 2024 OR 2025",
+            "recent technological breakthrough company stock 2024 OR 2025"
         ]
 
         for query in queries:
@@ -64,54 +149,47 @@ class AgenticLayer:
 
             logging.info(f"Scouting with query: '{query}'")
             try:
-                search_results = self.search_wrapper.results(query, num_results=5)
-                snippets = " ".join(res.get('snippet', '') for res in search_results if 'snippet' in res)
+                search_results = self._cached_search(query, num_results=5)
+                snippets = " ".join(r.get("snippet", "") for r in search_results if isinstance(r, dict))
             except Exception as e:
                 logging.error(f"Search API error: {e}")
                 continue
 
-            # Ask LLM to propose tickers (optional signal)...
+            # Optional LLM assist (we still gate with regex + validation)
             try:
                 prompt = ChatPromptTemplate.from_template(
-                    "Extract stock tickers (e.g., AAPL, MSFT) mentioned in the text. "
+                    "Extract US stock tickers (e.g., AAPL, MSFT) mentioned in the text. "
                     "Return a comma-separated list or 'None'.\n\nText:\n{context}"
                 )
-                llm_response = (prompt | self.llm).invoke({"context": snippets}).content
+                llm_resp = (prompt | self.llm).invoke({"context": snippets}).content
             except Exception as e:
                 logging.error(f"Ticker extraction LLM error: {e}")
-                llm_response = ""
+                llm_resp = ""
 
-            # ...but enforce with regex so we don't rely solely on LLM formatting
-            candidates = set(TICKER_REGEX.findall(snippets + " " + llm_response))
+            # Regex-first extraction to avoid relying on the LLM format
+            raw = snippets + " " + llm_resp
+            candidates = {m.group(0) for m in TICKER_REGEX.finditer(raw)}
             for t in sorted(candidates):
-                if t not in known_tickers:
+                t = _canonical_upper(t)
+                if t in known_tickers:
+                    continue
+                if self._is_valid_equity(t):
                     new_tickers.add(t)
+                    logging.info(f"✅ Validated scouted ticker: {t}")
                     if len(new_tickers) >= getattr(config, "MAX_SCOUT_RESULTS", 10):
                         break
-
-        # Validate each found ticker to ensure it's real enough
-        validated = []
-        for t in new_tickers:
-            try:
-                info = yf.Ticker(t).info or {}
-                if info.get('marketCap') or info.get('shortName') or info.get('longName'):
-                    validated.append(t)
-                    logging.info(f"✅ Validated scouted ticker: {t}")
                 else:
-                    logging.warning(f"❌ Discarding invalid/delisted ticker: {t}")
-                if len(validated) >= getattr(config, "MAX_SCOUT_RESULTS", 10):
-                    break
-            except Exception:
-                logging.warning(f"❌ Discarding ticker after yfinance error: {t}")
-                continue
+                    logging.debug(f"Filtered out non-equity/foreign/defunct ticker: {t}")
 
-        logging.info(f"Scout found {len(validated)} new tickers: {validated}")
-        return validated
+        final_list = list(new_tickers)[:getattr(config, "MAX_SCOUT_RESULTS", 10)]
+        logging.info(f"Scout found {len(final_list)} new tickers: {final_list}")
+        return final_list
 
     # ------------------------
     # Analyst Agent
     # ------------------------
     def _run_analyst_agent(self, ticker):
+        ticker = _canonical_upper(ticker)
         if ticker in self.analysis_cache:
             logging.info(f"Using cached analysis for {ticker}")
             return self.analysis_cache[ticker]
@@ -134,11 +212,14 @@ class AgenticLayer:
             "fiftyTwoWeekLow": stock_info.get("fiftyTwoWeekLow", "N/A"),
         }
 
-        # News gathering (keep site: filters plain, no markdown)
+        # Fresh news: bias toward recent years; keep site: filters plain
         news_queries = {
-            "Professional & Financial Analysis": f'"{company_name}" ({ticker}) stock analysis site:reuters.com OR site:bloomberg.com OR site:wsj.com',
-            "Retail & Social Sentiment": f'"{company_name}" ({ticker}) stock sentiment site:reddit.com OR site:fool.com OR site:seekingalpha.com',
-            "Risk Factors & Negative News": f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest'
+            "Professional & Financial Analysis":
+                f'"{company_name}" ({ticker}) stock analysis 2024 OR 2025 site:reuters.com OR site:bloomberg.com OR site:wsj.com',
+            "Retail & Social Sentiment":
+                f'"{company_name}" ({ticker}) stock sentiment 2024 OR 2025 site:reddit.com OR site:fool.com OR site:seekingalpha.com',
+            "Risk Factors & Negative News":
+                f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest 2024 OR 2025'
         }
 
         news_context = ""
@@ -146,22 +227,27 @@ class AgenticLayer:
             news_context += f"\n--- {category} ---\n"
             try:
                 num_results = 4 if category == "Professional & Financial Analysis" else 2
-                results = self.search_wrapper.results(query, num_results=num_results)
+                results = self._cached_search(query, num_results=num_results)
                 if results:
                     for r in results:
-                        news_context += f"**{r.get('title', 'No Title')}**: {r.get('snippet', '')}\n"
+                        title = r.get("title", "No Title")
+                        snippet = r.get("snippet", "")
+                        news_context += f"**{title}**: {snippet}\n"
                 else:
                     news_context += "No recent results found.\n"
             except Exception as e:
                 logging.error(f"News search error for {ticker} ({category}): {e}")
                 news_context += "Error fetching news.\n"
 
-        # Persona analysis
+        # Persona analysis with hallucination guardrails
         personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
         system_prompt = (
-            "You are an expert financial analyst writing from the perspective of a {persona}. "
-            "Start by referencing one specific item from the News Context, connect it to the Financial Data, "
-            "and end with a clear conclusion.\n\n"
+            "You are an expert financial analyst writing from the perspective of a {persona}.\n"
+            "RULES:\n"
+            "• DO NOT invent numbers. Use numeric values ONLY if they appear in the Financial Data block.\n"
+            "• If a metric is missing or 'N/A', say so explicitly.\n"
+            "• Reference at least one concrete item from the News Context (title or outlet), but do not invent dates or prices.\n"
+            "• End with a one-sentence conclusion.\n\n"
             "--- DATA AS OF {date} ---\n"
             "**Financial Data:**\n{financial_data}\n\n"
             "**News Context:**\n{news_context}\n\n"
@@ -198,11 +284,11 @@ class AgenticLayer:
         if not all(p in reports for p in ["Market Investor", "Value Investor", "Devil's Advocate"]):
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Missing persona analysis."}
 
-        # IMPORTANT: No raw braces in the template (avoids LangChain "missing variables" error)
+        # No raw braces in the template to avoid LangChain variable parsing issues
         system_prompt = (
             "You are a senior portfolio manager. Based on the three analyst reports, output ONLY a valid JSON object "
-            "with these keys: \"rating\" (0.0-1.0 float), \"recommendation\" (\"Buy\"|\"Sell\"|\"Hold\"|\"Neutral\"), "
-            "and \"justification\" (string). Do not add any extra text or markdown.\n\n"
+            'with keys: "rating" (float 0.0-1.0), "recommendation" ("Buy"|"Sell"|"Hold"|"Neutral"), '
+            'and "justification" (string). Do not add any extra text or markdown.\n\n'
             "Market Investor report:\n{market_report}\n\n"
             "Value Investor report:\n{value_report}\n\n"
             "Devil's Advocate report:\n{devils_report}"
@@ -214,20 +300,11 @@ class AgenticLayer:
                 "value_report": reports["Value Investor"],
                 "devils_report": reports["Devil's Advocate"]
             })
-            # Strip any code fences
-            clean_text = re.sub(r"```(?:json)?|```", "", response.content).strip()
-
-            # Non-greedy JSON block
-            m = re.search(r"\{.*?\}", clean_text, flags=re.DOTALL)
-            if not m:
-                # Fallback: try converting single quotes to double quotes
-                fallback = clean_text.replace("'", '"')
-                m = re.search(r"\{.*?\}", fallback, flags=re.DOTALL)
-                if not m:
-                    return {"rating": 0.0, "recommendation": "Neutral", "justification": "Invalid JSON."}
-                clean_text = fallback
-
-            return json.loads(m.group(0))
+            parsed = _safe_json_loads(response.content) or {
+                "rating": 0.0, "recommendation": "Neutral",
+                "justification": "Invalid JSON."
+            }
+            return _normalize_judgment(parsed)
         except Exception as e:
             logging.error(f"Judge agent error for {ticker}: {e}")
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Failed to parse decision."}
@@ -240,7 +317,7 @@ class AgenticLayer:
 
         try:
             quant_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
-            known_tickers = set(quant_df['Ticker'])
+            known_tickers = set(_canonical_upper(t) for t in quant_df['Ticker'].astype(str))
         except FileNotFoundError:
             logging.error(f"Quantitative candidates file missing: {config.CANDIDATE_RESULTS_PATH}")
             return pd.DataFrame()
@@ -248,25 +325,29 @@ class AgenticLayer:
         try:
             prev_df = pd.read_csv(config.AGENTIC_RESULTS_PATH)
             prev_df['Analysis_Date'] = pd.to_datetime(prev_df['Analysis_Date'])
-            known_tickers.update(prev_df['Ticker'])
+            known_tickers.update(_canonical_upper(t) for t in prev_df['Ticker'].astype(str))
         except FileNotFoundError:
             logging.info("No previous agentic recommendations found.")
             prev_df = pd.DataFrame()
 
+        # Scout for new names (validated)
         new_tickers = self._run_scout_agent(known_tickers)
-        top_quant_candidates = quant_df.head(getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10))['Ticker'].tolist()
+
+        # Take top quant names
+        top_n = getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10)
+        top_quant_candidates = [ _canonical_upper(t) for t in quant_df.head(top_n)['Ticker'].astype(str).tolist() ]
 
         # Deduplicate while preserving order
         tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
-
         logging.info(f"Analyzing {len(tickers_to_analyze)} unique tickers: {tickers_to_analyze}")
+
         today = pd.Timestamp(datetime.now()).normalize()
         results = []
 
         for ticker in tickers_to_analyze:
             # Use the most recent analysis if it's still fresh
-            if not prev_df.empty and ticker in prev_df['Ticker'].values:
-                rows = prev_df[prev_df['Ticker'] == ticker].sort_values(by='Analysis_Date', ascending=False)
+            if not prev_df.empty and ticker in set(_canonical_upper(t) for t in prev_df['Ticker'].astype(str)):
+                rows = prev_df[prev_df['Ticker'].str.upper() == ticker].sort_values(by='Analysis_Date', ascending=False)
                 if not rows.empty:
                     last_date = pd.to_datetime(rows.iloc[0]['Analysis_Date']).normalize()
                     if (today - last_date) < timedelta(days=5):
@@ -277,8 +358,9 @@ class AgenticLayer:
             reports = self._run_analyst_agent(ticker)
             judgment = self._run_ranking_judge_agent(reports, ticker)
 
-            quant_score_series = quant_df.loc[quant_df['Ticker'] == ticker, 'Quant_Score']
-            quant_score = quant_score_series.iloc[0] if not quant_score_series.empty else 'N/A'
+            # Pull quant score if present
+            qser = quant_df.loc[quant_df['Ticker'].str.upper() == ticker, 'Quant_Score']
+            quant_score = qser.iloc[0] if not qser.empty else 'N/A'
 
             results.append({
                 'Ticker': ticker,
