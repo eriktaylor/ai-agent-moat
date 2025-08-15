@@ -1,0 +1,123 @@
+name: Weekly Pipeline (read-only)
+
+on:
+  schedule:
+    - cron: "0 14 * * 1" # Mondays 14:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read  # never write in this job
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies (if requirements.txt exists)
+        if: hashFiles('requirements.txt') != ''
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Prune local cache in workspace (no commit)
+        env:
+          CACHE_TTL_DAYS: 7
+        run: |
+          python - <<'PY'
+          import os, json
+          from pathlib import Path
+          import pandas as pd
+
+          TTL = int(os.getenv("CACHE_TTL_DAYS","7"))
+          root = Path("data/search_cache")
+          root.mkdir(parents=True, exist_ok=True)
+
+          def load(p):
+            try:
+              with open(p, "r", encoding="utf-8") as f:
+                payload = json.load(f)
+              if isinstance(payload, dict) and "results" in payload:
+                return payload
+              return {"_meta": {}, "results": payload}
+            except Exception:
+              return None
+
+          kept = []
+          for p in sorted(root.glob("*.json")):
+            payload = load(p)
+            stale = True
+            if payload:
+              meta = payload.get("_meta", {})
+              try:
+                created = pd.to_datetime(meta.get("created_utc"))
+                stale = (pd.Timestamp.utcnow() - created) > pd.Timedelta(days=TTL)
+              except Exception:
+                stale = True
+            if stale:
+              p.unlink(missing_ok=True)
+            else:
+              kept.append(p.name)
+
+          # write manifest of files that should exist after sync
+          with open("data/search_cache/_manifest_cache.txt", "w", encoding="utf-8") as f:
+            for name in kept:
+              f.write(name + "\n")
+          print(f"Kept {len(kept)} cache files (<= {TTL} days old).")
+          PY
+
+      - name: Run pipeline (quant always; agentic only if secrets exist)
+        env:
+          GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
+          GOOGLE_CSE_ID:  ${{ secrets.GOOGLE_CSE_ID }}
+        run: |
+          python - <<'PY'
+          import os, sys, pandas as pd
+          sys.path.append('.')
+          import config
+
+          from stock_analyzer.candidate_generator import CandidateGenerator
+
+          # Load inputs expected in data/
+          price_df = pd.read_csv("data/sp500_price_data.csv")
+          fundamentals_df = pd.read_csv("data/sp500_fundamental_data.csv")
+          spy_df = pd.read_csv("data/spy_market_data.csv")
+
+          print("🔹 Candidate generation …")
+          cg = CandidateGenerator()
+          try:
+              cg.generate_candidates(price_df, fundamentals_df, spy_df)
+              print(f"✅ Wrote {config.CANDIDATE_RESULTS_PATH}")
+          except Exception as e:
+              print("❌ Candidate generation failed:", e)
+
+          if os.environ.get("GOOGLE_API_KEY") and os.environ.get("GOOGLE_CSE_ID"):
+              print("🔹 Agentic layer …")
+              try:
+                  from stock_analyzer.agentic_layer import AgenticLayer
+                  AgenticLayer().run_analysis()
+                  print(f"✅ Wrote {config.AGENTIC_RESULTS_PATH}")
+              except Exception as e:
+                  print("❌ Agentic layer failed:", e)
+          else:
+              print("⚠️ Agentic layer skipped (no Google secrets).")
+          PY
+
+      - name: Upload artifacts (CSVs + cache + manifest)
+        uses: actions/upload-artifact@v4
+        with:
+          name: pipeline-results
+          path: |
+            data/*.csv
+            data/search_cache/*.json
+            data/search_cache/_manifest_cache.txt
+          if-no-files-found: warn
