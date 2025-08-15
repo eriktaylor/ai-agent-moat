@@ -31,25 +31,21 @@ class CandidateGenerator:
         features_df = pd.merge(features_df, spy_df[['date', 'market_return']], on='date', how='left')
 
         # --- Beta Calculation (Robust Method) ---
-        # This method avoids creating the 'level_1' artifact.
         def calculate_beta(sub_df, window=63):
             log_return = np.log(sub_df['adj close'] / sub_df['adj close'].shift(1))
             market_var = sub_df['market_return'].rolling(window=window).var()
             covariance = log_return.rolling(window=window).cov(sub_df['market_return'])
             return covariance / market_var
 
-        # --- CRITICAL FIX ---
-        # Set a multi-index to perform the calculation correctly.
-        features_df.set_index(['ticker', 'date'], inplace=True)
+        # --- CRITICAL FIX for AssertionError and level_1 bug ---
+        # 1. Apply the function. The result is a Series with a (ticker, date) MultiIndex.
+        beta_series = features_df.groupby('ticker').apply(calculate_beta)
         
-        # Group by the 'ticker' level of the index and apply the function.
-        beta_series = features_df.groupby(level='ticker').apply(calculate_beta)
+        # 2. Convert to a DataFrame and reset the index. This creates 'ticker', 'date', and the beta column.
+        beta_df = beta_series.rename('beta_63d').reset_index()
         
-        # Assign the results back. Pandas aligns on the index, preventing the 'level_1' artifact.
-        features_df['beta_63d'] = beta_series
-        
-        # Restore 'date' and 'ticker' to columns for subsequent steps.
-        features_df.reset_index(inplace=True)
+        # 3. Merge the beta values back using a safe, explicit merge. This avoids all index-related errors.
+        features_df = pd.merge(features_df, beta_df, on=['date', 'ticker'], how='left')
         # --- END FIX ---
         
         # --- Clean Up ---
