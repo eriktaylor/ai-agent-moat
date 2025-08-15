@@ -35,7 +35,6 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-
       - name: Install dependencies (if requirements.txt exists)
         if: hashFiles('requirements.txt') != ''
         run: |
