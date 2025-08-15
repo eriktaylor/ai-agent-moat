@@ -38,18 +38,24 @@ class CandidateGenerator:
             covariance = log_return.rolling(window=window).cov(sub_df['market_return'])
             return covariance / market_var
 
-        # Group by ticker, apply the function, and rename the resulting series.
-        beta_series = features_df.groupby('ticker').apply(calculate_beta)
-        beta_df = beta_series.rename('beta_63d').reset_index()
+        # --- CRITICAL FIX ---
+        # Set a multi-index to perform the calculation correctly.
+        features_df.set_index(['ticker', 'date'], inplace=True)
         
-        features_df = pd.merge(features_df, beta_df, on=['date', 'ticker'], how='left')
+        # Group by the 'ticker' level of the index and apply the function.
+        beta_series = features_df.groupby(level='ticker').apply(calculate_beta)
+        
+        # Assign the results back. Pandas aligns on the index, preventing the 'level_1' artifact.
+        features_df['beta_63d'] = beta_series
+        
+        # Restore 'date' and 'ticker' to columns for subsequent steps.
+        features_df.reset_index(inplace=True)
+        # --- END FIX ---
         
         # --- Clean Up ---
         features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return'])
         
         # --- Selective Dropna ---
-        # Instead of a global dropna, we only drop rows where critical long-term features are missing.
-        # This preserves more of the dataset for training.
         critical_features = ['return_252d', 'volatility_252d', 'beta_63d']
         return features_df.dropna(subset=critical_features)
 
@@ -61,7 +67,6 @@ class CandidateGenerator:
         df_copy = df.copy()
         df_copy['future_return'] = df_copy.groupby('ticker')['adj close'].shift(-config.TARGET_FORWARD_PERIOD) / df_copy['adj close'] - 1
         
-        # Drop rows where future return can't be calculated
         df_copy = df_copy.dropna(subset=['future_return'])
 
         daily_cutoffs = df_copy.groupby('date')['future_return'].quantile(config.TARGET_QUANTILE).rename('cutoff')
@@ -94,8 +99,6 @@ class CandidateGenerator:
         features_df = self._create_features(df, spy_df)
         final_df = self._define_target(features_df)
         
-        # --- FIX for Data Leakage ---
-        # We now create a clean separation between training and prediction data.
         max_date = final_df['date'].max()
         
         train_df = final_df[final_df['date'] < max_date]
@@ -105,7 +108,6 @@ class CandidateGenerator:
             print("⚠️ No recent data available for prediction.")
             return pd.DataFrame(), pd.DataFrame()
 
-        # Set date as index for the model training part
         train_df = train_df.set_index('date')
         
         X_train = train_df.drop(columns=['target', 'ticker', 'adj close'])
