@@ -1,0 +1,64 @@
+name: Publish pipeline outputs (PR)
+
+on:
+  workflow_run:
+    workflows: ["Weekly Pipeline (read-only)"]
+    types: [completed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  create-pr:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout (full history to create/update PR branch)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: pipeline-results
+          path: _results
+
+      - name: Place results into repo working tree
+        run: |
+          mkdir -p data/search_cache
+          shopt -s nullglob
+
+          # CSVs: simply copy/overwrite
+          cp -f _results/*.csv data/ 2>/dev/null || true
+
+          # Cache: copy JSONs and sync deletions per manifest
+          cp -f _results/*.json data/search_cache/ 2>/dev/null || true
+          if [ -f _results/_manifest_cache.txt ]; then
+            mapfile -t keep < _results/_manifest_cache.txt
+            # build a set-like newline-delimited list of names to keep
+            printf "%s\n" "${keep[@]}" | sort -u > _results/_keep.txt
+            # delete any JSON in repo not listed in keep
+            for f in data/search_cache/*.json; do
+              [ -e "$f" ] || continue
+              base=$(basename "$f")
+              if ! grep -qx "$base" _results/_keep.txt; then
+                git rm -f -- "$f"
+              fi
+            done
+          fi
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: bot/pipeline-results
+          title: "📈 Weekly pipeline results"
+          body: "Automated outputs from the scheduled pipeline.\n\n- Candidates & agentic CSVs\n- Search cache (synced with TTL)\n"
+          commit-message: "chore: weekly pipeline outputs (CSVs + cache sync)"
+          add-paths: |
+            data/*.csv
+            data/search_cache/*.json
+            data/search_cache/_manifest_cache.txt
+          delete-branch: true
