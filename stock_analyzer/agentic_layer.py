@@ -37,6 +37,72 @@ VALID_US_EXCHANGES = {"NMS", "NYQ", "NCM", "NGM", "BATS", "ASE", "PCX"}  # Nasda
 SEARCH_CACHE_DIR = getattr(config, "SEARCH_CACHE_DIR", "data/search_cache")
 os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
 
+# --- add near top of agentic_layer.py ---
+import hashlib
+from pathlib import Path
+
+CACHE_VERSION = "v1"
+CACHE_TTL_DAYS = getattr(config, "SEARCH_CACHE_TTL_DAYS", 7)  # override in config if you want
+SEARCH_CACHE_DIR = getattr(config, "SEARCH_CACHE_DIR", "data/search_cache")
+Path(SEARCH_CACHE_DIR).mkdir(parents=True, exist_ok=True)
+
+def _cache_filename(query: str, bucket: int) -> str:
+    # stable readable prefix + short digest to avoid collisions
+    key = re.sub(r"[^a-zA-Z0-9]+", "_", query)[:100]
+    digest = hashlib.sha1(query.encode("utf-8")).hexdigest()[:8]
+    return f"{key}_{bucket}_{digest}.json"
+
+def _load_cache(path: str):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            payload = json.load(f)
+        # Back-compat: payload might be raw results array
+        if isinstance(payload, dict) and "results" in payload:
+            return payload
+        return {"_meta": {}, "results": payload}
+    except Exception:
+        return None
+
+def _save_cache(path: str, query: str, num_results: int, results):
+    payload = {
+        "_meta": {
+            "cache_version": CACHE_VERSION,
+            "query": query,
+            "num_results": num_results,
+            "created_utc": datetime.utcnow().isoformat(timespec="seconds"),
+        },
+        "results": results,
+    }
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+    except Exception:
+        pass
+
+def _is_stale(meta: dict, ttl_days: int) -> bool:
+    try:
+        created = pd.to_datetime(meta.get("created_utc"))
+        age = pd.Timestamp.utcnow() - created
+        return age > pd.Timedelta(days=ttl_days)
+    except Exception:
+        # If we can't read metadata, treat as stale
+        return True
+
+def _prune_local_cache(ttl_days: int = CACHE_TTL_DAYS):
+    pruned = 0
+    for p in Path(SEARCH_CACHE_DIR).glob("*.json"):
+        payload = _load_cache(str(p))
+        if payload is None:
+            continue
+        if _is_stale(payload.get("_meta", {}), ttl_days):
+            try:
+                p.unlink()
+                pruned += 1
+            except Exception:
+                pass
+    if pruned:
+        logging.info(f"🧹 Pruned {pruned} stale cache files (> {ttl_days} days)")
+
 def _safe_json_loads(s: str):
     """Lenient JSON extraction from an LLM response."""
     clean = re.sub(r"```(?:json)?|```", "", s).strip()
@@ -92,22 +158,21 @@ class AgenticLayer:
     # Caching wrapper (weekly buckets)
     # ------------------------
     def _cached_search(self, query: str, num_results: int):
-        bucket = (datetime.utcnow().date().toordinal() // 7)  # refresh weekly
-        key = re.sub(r"[^a-zA-Z0-9]+", "_", f"{query}")[:120]
-        path = os.path.join(SEARCH_CACHE_DIR, f"{key}_{bucket}.json")
+        # weekly bucket is still fine for naming; TTL enforces freshness
+        bucket = (datetime.utcnow().date().toordinal() // 7)
+        fname = _cache_filename(query, bucket)
+        path = os.path.join(SEARCH_CACHE_DIR, fname)
+    
+        # Load if present and fresh
         if os.path.exists(path):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
+            payload = _load_cache(path)
+            if payload and not _is_stale(payload.get("_meta", {}), CACHE_TTL_DAYS):
+                return payload["results"]
+    
+        # Otherwise hit the API and refresh cache
         results = self.search_wrapper.results(query, num_results=num_results)
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(results, f)
-        except Exception:
-            pass
-        return results
+        _save_cache(path, query, num_results, results)
+    return results
 
     # ------------------------
     # Ticker validation
@@ -382,5 +447,7 @@ class AgenticLayer:
 
         results_df.to_csv(config.AGENTIC_RESULTS_PATH, index=False)
         logging.info(f"Analysis complete. Saved to {config.AGENTIC_RESULTS_PATH}")
+
+        _prune_local_cache()
 
         return results_df
