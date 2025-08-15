@@ -1,5 +1,9 @@
 name: Weekly Pipeline (read-only)
 
+concurrency:
+  group: weekly-pipeline
+  cancel-in-progress: true
+
 on:
   schedule:
     - cron: "0 14 * * 1" # Mondays 14:00 UTC
@@ -75,6 +79,25 @@ jobs:
           print(f"Kept {len(kept)} cache files (<= {TTL} days old).")
           PY
 
+      # ✅ NEW: run DataManager to refresh the base CSVs every time
+      - name: Update base market & fundamentals data
+        run: |
+          python - <<'PY'
+          import sys, pandas as pd
+          sys.path.append('.')
+          from stock_analyzer.data_manager import DataManager
+
+          print("--- Loading fresh market data ---")
+          dm = DataManager()
+          price_df, fundamentals_df, spy_df = dm.get_all_data()
+
+          price_df.to_csv("data/sp500_price_data.csv", index=False)
+          fundamentals_df.to_csv("data/sp500_fundamental_data.csv", index=False)
+          spy_df.to_csv("data/spy_market_data.csv", index=False)
+
+          print("✅ Updated core data files.")
+          PY
+
       - name: Run pipeline (quant always; agentic only if secrets exist)
         env:
           GOOGLE_API_KEY: ${{ secrets.GOOGLE_API_KEY }}
@@ -87,7 +110,7 @@ jobs:
 
           from stock_analyzer.candidate_generator import CandidateGenerator
 
-          # Load inputs expected in data/
+          # Load freshly written inputs
           price_df = pd.read_csv("data/sp500_price_data.csv")
           fundamentals_df = pd.read_csv("data/sp500_fundamental_data.csv")
           spy_df = pd.read_csv("data/spy_market_data.csv")
