@@ -231,3 +231,74 @@ class AgenticLayer:
         except Exception as e:
             logging.error(f"Judge agent error for {ticker}: {e}")
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Failed to parse decision."}
+
+    # ------------------------
+    # Main pipeline
+    # ------------------------
+    def run_analysis(self):
+        logging.info("Starting Agentic Analysis Layer...")
+
+        try:
+            quant_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
+            known_tickers = set(quant_df['Ticker'])
+        except FileNotFoundError:
+            logging.error(f"Quantitative candidates file missing: {config.CANDIDATE_RESULTS_PATH}")
+            return pd.DataFrame()
+
+        try:
+            prev_df = pd.read_csv(config.AGENTIC_RESULTS_PATH)
+            prev_df['Analysis_Date'] = pd.to_datetime(prev_df['Analysis_Date'])
+            known_tickers.update(prev_df['Ticker'])
+        except FileNotFoundError:
+            logging.info("No previous agentic recommendations found.")
+            prev_df = pd.DataFrame()
+
+        new_tickers = self._run_scout_agent(known_tickers)
+        top_quant_candidates = quant_df.head(getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10))['Ticker'].tolist()
+
+        # Deduplicate while preserving order
+        tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
+
+        logging.info(f"Analyzing {len(tickers_to_analyze)} unique tickers: {tickers_to_analyze}")
+        today = pd.Timestamp(datetime.now()).normalize()
+        results = []
+
+        for ticker in tickers_to_analyze:
+            # Use the most recent analysis if it's still fresh
+            if not prev_df.empty and ticker in prev_df['Ticker'].values:
+                rows = prev_df[prev_df['Ticker'] == ticker].sort_values(by='Analysis_Date', ascending=False)
+                if not rows.empty:
+                    last_date = pd.to_datetime(rows.iloc[0]['Analysis_Date']).normalize()
+                    if (today - last_date) < timedelta(days=5):
+                        logging.info(f"Using recent analysis for {ticker} from {last_date.date()}")
+                        results.append(rows.iloc[0].to_dict())
+                        continue
+
+            reports = self._run_analyst_agent(ticker)
+            judgment = self._run_ranking_judge_agent(reports, ticker)
+
+            quant_score_series = quant_df.loc[quant_df['Ticker'] == ticker, 'Quant_Score']
+            quant_score = quant_score_series.iloc[0] if not quant_score_series.empty else 'N/A'
+
+            results.append({
+                'Ticker': ticker,
+                'Quant_Score': quant_score,
+                'Analysis_Date': today.strftime('%Y-%m-%d'),
+                'Agent_Rating': judgment.get('rating'),
+                'Agent_Recommendation': judgment.get('recommendation'),
+                'Justification': judgment.get('justification'),
+                'Market_Investor_Analysis': reports.get('Market Investor', 'N/A'),
+                'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
+                'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A')
+            })
+
+        results_df = pd.DataFrame(results)
+        # Safe sort (NaN if parsing fails)
+        results_df['Agent_Rating'] = pd.to_numeric(results_df['Agent_Rating'], errors='coerce')
+        results_df.sort_values(by="Agent_Rating", ascending=False, inplace=True)
+        results_df.reset_index(drop=True, inplace=True)
+
+        results_df.to_csv(config.AGENTIC_RESULTS_PATH, index=False)
+        logging.info(f"Analysis complete. Saved to {config.AGENTIC_RESULTS_PATH}")
+
+        return results_df
