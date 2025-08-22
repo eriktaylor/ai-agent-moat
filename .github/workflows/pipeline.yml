@@ -23,6 +23,15 @@ jobs:
           fetch-depth: 0
           ref: main
 
+      - name: Show commit & requirements.txt
+        run: |
+          echo "Branch: $(git rev-parse --abbrev-ref HEAD)"
+          echo "Commit: $(git rev-parse HEAD)"
+          echo "Repo root contents:"
+          ls -la
+          echo "---- requirements.txt (first 200 lines) ----"
+          sed -n '1,200p' requirements.txt || echo "requirements.txt NOT FOUND"
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
