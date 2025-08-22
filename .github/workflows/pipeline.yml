@@ -6,7 +6,7 @@ concurrency:
 
 on:
   schedule:
-    - cron: "55 19 * * *" #minute, hour, day of month, month, day of week
+    - cron: "0 20 * * *" #minute, hour, day of month, month, day of week
     #- cron: "0 14 * * 1" # Mondays 14:00 UTC
   workflow_dispatch:
 
