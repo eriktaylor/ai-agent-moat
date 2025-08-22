@@ -27,6 +27,11 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Install system deps (OpenMP for LightGBM)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libgomp1
+
       - name: Cache pip dependencies
         uses: actions/cache@v4
         with:
