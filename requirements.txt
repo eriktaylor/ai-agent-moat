@@ -1,3 +1,4 @@
+lightgbm
 langchain
 langchain-community
 langchain-huggingface
