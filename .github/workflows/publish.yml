@@ -4,7 +4,6 @@ on:
   workflow_run:
     workflows: ["Weekly Pipeline (read-only)"]
     types: [completed]
-
   workflow_dispatch:
     inputs:
       run_id:
@@ -16,32 +15,51 @@ on:
         default: "main"
 
 permissions:
-  actions: read           # needed to read other runs' artifacts
-  contents: write         # needed to push commits
-  pull-requests: write    # needed to open PRs
+  actions: read
+  contents: write
+  pull-requests: write
 
 jobs:
   create-pr:
-    # allow if weekly run succeeded OR manual dispatch
     if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout (full history to create/update PR branch)
+      - name: Checkout (full history)
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # ----- WORKFLOW_RUN PATH -----
-      - name: Debug (list artifacts on triggering run)
-        if: ${{ github.event_name == 'workflow_run' }}
+      # Resolve the workflow ID of the weekly pipeline (by name OR by filename)
+      - name: Resolve weekly workflow ID
+        id: wf
         run: |
-          echo "Trigger run ID: ${{ github.event.workflow_run.id }}"
+          set -euo pipefail
+          echo "Listing workflows in ${{ github.repository }}..."
           curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                -H "Accept: application/vnd.github+json" \
-               "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
-            | jq '.artifacts[] | {name: .name, size_in_bytes: .size_in_bytes, expired: .expired}'
+               "https://api.github.com/repos/${{ github.repository }}/actions/workflows" \
+            > workflows.json
 
+          # Try to match by name first (exact match). Change this string if your weekly workflow name differs.
+          name="Weekly Pipeline (read-only)"
+          id=$(jq -r --arg NAME "$name" '.workflows[] | select(.name==$NAME) | .id' workflows.json)
+
+          # If not found by name, try by filename (set this to your actual YAML file path)
+          if [ -z "$id" ] || [ "$id" = "null" ]; then
+            file=".github/workflows/weekly-pipeline.yml"   # <-- change if your file has a different path
+            id=$(jq -r --arg FILE "$file" '.workflows[] | select(.path==$FILE) | .id' workflows.json)
+          fi
+
+          if [ -z "$id" ] || [ "$id" = "null" ]; then
+            echo "Could not resolve workflow ID by name or file. Available workflows:"
+            jq -r '.workflows[] | "\(.id)  \(.name)  \(.path)"' workflows.json
+            exit 1
+          fi
+
+          echo "Resolved workflow id: $id"
+          echo "workflow_id=$id" >> "$GITHUB_OUTPUT"
+
+      # If triggered by workflow_run, download that run's artifact
       - name: Download artifacts from triggering run
         if: ${{ github.event_name == 'workflow_run' }}
         uses: dawidd6/action-download-artifact@v3
@@ -52,8 +70,8 @@ jobs:
           path: _results
           repo: ${{ github.repository }}
 
-      # ----- WORKFLOW_DISPATCH PATHS -----
-      - name: Download artifacts by run_id (manual input)
+      # Manual w/ explicit run_id input
+      - name: Download artifacts by run_id (manual)
         if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_id != '' }}
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -63,23 +81,23 @@ jobs:
           path: _results
           repo: ${{ github.repository }}
 
+      # Manual w/o run_id: download latest successful run on main for the resolved workflow_id
       - name: Download artifacts from latest successful Weekly Pipeline on main
         if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.run_id == '' || github.event.inputs.run_id == null) }}
         uses: dawidd6/action-download-artifact@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          workflow: Weekly Pipeline (read-only)   # must match the weekly workflow's "name:"
+          workflow: ${{ steps.wf.outputs.workflow_id }}   # use numeric ID to avoid name mismatch
           branch: main
           workflow_conclusion: success
           name: pipeline-results
           path: _results
           repo: ${{ github.repository }}
 
-      # ----- COMMON STEPS -----
       - name: Show downloaded artifact contents (debug)
         run: |
           echo "Downloaded files:"
-          ls -R _results || (echo "No files found in _results" && exit 1)
+          ls -R _results || (echo "No files found in _results"; exit 1)
 
       - name: Stage results into repo working tree
         run: |
