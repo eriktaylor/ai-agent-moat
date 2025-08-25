@@ -5,6 +5,8 @@ on:
     workflows: ["Weekly Pipeline (read-only)"]
     types: [completed]
 
+  workflow_dispatch:   #allow manual run
+
 permissions:
   contents: write
   pull-requests: write
