@@ -5,17 +5,25 @@ on:
     workflows: ["Weekly Pipeline (read-only)"]
     types: [completed]
 
-  workflow_dispatch:   #allow manual run
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Optional: Weekly Pipeline run_id to fetch artifacts from"
+        required: false
+      branch:
+        description: "Base branch for PR"
+        required: false
+        default: "main"
 
 permissions:
-  actions: read
-  contents: write
-  pull-requests: write
+  actions: read           # needed to read other runs' artifacts
+  contents: write         # needed to push commits
+  pull-requests: write    # needed to open PRs
 
 jobs:
   create-pr:
-    #if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || (github.event_name == 'workflow_dispatch') }}
+    # allow if weekly run succeeded OR manual dispatch
+    if: ${{ (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success') || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
 
     steps:
@@ -24,31 +32,56 @@ jobs:
         with:
           fetch-depth: 0
 
+      # ----- WORKFLOW_RUN PATH -----
       - name: Debug (list artifacts on triggering run)
         if: ${{ github.event_name == 'workflow_run' }}
         run: |
-          echo "Run ID: ${{ github.event.workflow_run.id }}"
+          echo "Trigger run ID: ${{ github.event.workflow_run.id }}"
           curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
+               -H "Accept: application/vnd.github+json" \
+               "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
             | jq '.artifacts[] | {name: .name, size_in_bytes: .size_in_bytes, expired: .expired}'
 
-      # ⬇️ Download artifacts produced by the triggering run
-      - name: Download pipeline artifacts from triggering run
+      - name: Download artifacts from triggering run
+        if: ${{ github.event_name == 'workflow_run' }}
         uses: dawidd6/action-download-artifact@v3
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           run_id: ${{ github.event.workflow_run.id }}
-          name: pipeline-results                  # must match uploader name exactly
+          name: pipeline-results
           path: _results
           repo: ${{ github.repository }}
 
+      # ----- WORKFLOW_DISPATCH PATHS -----
+      - name: Download artifacts by run_id (manual input)
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.run_id != '' }}
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          run_id: ${{ github.event.inputs.run_id }}
+          name: pipeline-results
+          path: _results
+          repo: ${{ github.repository }}
+
+      - name: Download artifacts from latest successful Weekly Pipeline on main
+        if: ${{ github.event_name == 'workflow_dispatch' && (github.event.inputs.run_id == '' || github.event.inputs.run_id == null) }}
+        uses: dawidd6/action-download-artifact@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          workflow: Weekly Pipeline (read-only)   # must match the weekly workflow's "name:"
+          branch: main
+          workflow_conclusion: success
+          name: pipeline-results
+          path: _results
+          repo: ${{ github.repository }}
+
+      # ----- COMMON STEPS -----
       - name: Show downloaded artifact contents (debug)
         run: |
           echo "Downloaded files:"
-          ls -R _results || true
+          ls -R _results || (echo "No files found in _results" && exit 1)
 
-      - name: Place results into repo working tree
+      - name: Stage results into repo working tree
         run: |
           set -euxo pipefail
           mkdir -p data/search_cache
@@ -65,7 +98,7 @@ jobs:
               [ -e "$f" ] || continue
               base=$(basename "$f")
               if ! grep -qx "$base" _results/_keep.txt; then
-                git rm -f -- "$f"
+                git rm -f -- "$f" || true
               fi
             done
           fi
@@ -74,6 +107,7 @@ jobs:
         uses: peter-evans/create-pull-request@v6
         with:
           branch: bot/pipeline-results
+          base: ${{ github.event.inputs.branch || 'main' }}
           title: "📈 Weekly pipeline results"
           body: |
             Automated outputs from the scheduled pipeline.
