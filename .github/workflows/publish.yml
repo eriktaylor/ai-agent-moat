@@ -8,6 +8,7 @@ on:
   workflow_dispatch:   #allow manual run
 
 permissions:
+  actions: read
   contents: write
   pull-requests: write
 
