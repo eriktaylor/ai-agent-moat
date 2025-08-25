@@ -24,6 +24,15 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Debug (list artifacts on triggering run)
+        if: ${{ github.event_name == 'workflow_run' }}
+        run: |
+          echo "Run ID: ${{ github.event.workflow_run.id }}"
+          curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}/artifacts" \
+            | jq '.artifacts[] | {name: .name, size_in_bytes: .size_in_bytes, expired: .expired}'
+
       # ⬇️ Download artifacts produced by the triggering run
       - name: Download pipeline artifacts from triggering run
         uses: dawidd6/action-download-artifact@v3
