@@ -134,7 +134,7 @@ class CandidateGenerator:
         features_df = pd.merge(features_df, beta_df[['date', 'ticker', 'beta_63d']], on=['date', 'ticker'], how='left')
 
         # --- Clean Up ---
-        features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return'])
+        features_df = features_df.drop(columns=['open', 'high', 'low', 'close', 'volume', 'market_return', 'beta', 'asof'])
 
         # --- Selective Dropna ---
         critical_features = ['return_252d', 'volatility_252d', 'beta_63d']
@@ -172,9 +172,9 @@ class CandidateGenerator:
         spy_df.columns = spy_df.columns.str.lower()
 
         # nuke the timestamp metadata column; it’s not a feature
-        fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
+        #fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
         #We calculate 63-day rolling beta, this one is provided by Yahoo finance (5-year beta).
-        fundamentals_df = fundamentals_df.drop(columns=['beta'], errors='ignore')
+        #fundamentals_df = fundamentals_df.drop(columns=['beta'], errors='ignore')
         
 
         df = pd.merge(
