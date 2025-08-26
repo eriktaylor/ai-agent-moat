@@ -138,11 +138,11 @@ class DataManager:
                 yf.download(tickers, period=config.YFINANCE_PERIOD, auto_adjust=False)
                 .stack(level=1)
                 .rename_axis(["Date", "Ticker"])
-                .reset_index()
+                #.reset_index()
             )
             # Normalize datatypes
             price_df["Date"] = pd.to_datetime(price_df["Date"])
-            price_df.to_csv(config.PRICE_DATA_PATH)
+            price_df.to_csv(config.PRICE_DATA_PATH, index=False)
             self._update_meta(Path(config.PRICE_DATA_PATH).name)        
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
@@ -181,7 +181,7 @@ class DataManager:
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
             # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
             spy_df = spy_df_raw.copy()
-            spy_df.reset_index(inplace=True)
+            #spy_df.reset_index(inplace=True)
             spy_df.columns = spy_df.columns.get_level_values(0)
             # Convert numeric columns to numeric types.
             spy_df['Date'] = pd.to_datetime(spy_df['Date'])
@@ -191,7 +191,7 @@ class DataManager:
                     spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
             
             # 3. SAVE: Save the clean, consistently formatted data for next time.
-            spy_df.to_csv(config.SPY_DATA_PATH) 
+            spy_df.to_csv(config.SPY_DATA_PATH, index=False) 
         else:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             # ACQUIRE: Load the already-clean file directly into the final variable.
