@@ -251,8 +251,9 @@ class DataManager:
         # Convert numeric columns to numeric types.
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
-        for col in numeric_cols: if col in spy_df.columns: 
-            spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
+        for col in numeric_cols:
+            if col in spy_df.columns:
+                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
             
         # Optional: drop first row (avoid partial first day)
         if len(spy_df) > 0:
