@@ -147,4 +147,8 @@ class CandidateGenerator:
         print(f"💾 Saving top {len(top_candidates)} candidates to {config.CANDIDATE_RESULTS_PATH}...")
         top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
 
+        # NEW: consolidated importance + SHAP report
+        #report = self._importance_and_shap_report(prod_model, X_train)
+        
+        #return top_candidates, feature_imp_sorted, report
         return top_candidates, feature_imp_sorted
