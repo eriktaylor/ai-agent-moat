@@ -121,6 +121,10 @@ jobs:
             done
           fi
 
+      - name: Cleanup temp files before PR
+        run: |
+          rm -rf _results workflows.json || true
+
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@v6
         with:
@@ -135,7 +139,5 @@ jobs:
             - Search cache (synced with TTL)
           commit-message: "chore: weekly pipeline outputs (data refresh + CSVs + cache sync)"
           add-paths: |
-            data/*.csv
-            data/search_cache/*.json
-            data/search_cache/_manifest_cache.txt
+            data
           delete-branch: true
