@@ -110,16 +110,154 @@ class DataManager:
             print(f"❌ Error fetching S&P 500 tickers: {e}")
             return []
 
+
+
+    def get_all_data(self):
+        """
+        Load or refresh:
+          - S&P 500 price data (daily, long format: Date, Ticker, Open/High/Low/Close/Adj Close/Volume)
+          - Fundamentals (for tickers present in price_df)
+          - SPY market data (same schema as price_df but only Ticker == 'SPY')
+        Implementation notes:
+          * Download S&P 500 + SPY together to avoid schema drift.
+          * Stack once, then split SPY rows into spy_df and remove from price_df.
+          * Ensure tz-naive daily dates, numeric OHLCV, and no stray columns.
+        """
+        print("\n--- 📊 Loading All Financial Data ---")
+    
+        # ---------------- Prices (+ SPY together) ----------------
+        price_stale = self._is_data_stale(config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
+        if price_stale:
+            print("⏳ Price data cache is stale. Downloading new data (S&P 500 + SPY)...")
+            tickers = self.get_sp500_tickers()
+            if not tickers:
+                return None, None, None
+            # Add SPY once, here
+            if "SPY" not in tickers:
+                tickers.append("SPY")
+    
+            raw = yf.download(tickers, period=config.YFINANCE_PERIOD, auto_adjust=False)
+            # yfinance returns MultiIndex columns like ('Adj Close', 'AAPL'), etc.
+            # Stack tickers into rows; remaining column level is the price fields.
+            price_all = (
+                raw.stack(level=1)
+                   .rename_axis(["Date", "Ticker"])
+                   .reset_index()
+            )
+    
+            # Normalize date (tz-naive daily)
+            price_all["Date"] = pd.to_datetime(price_all["Date"]).dt.tz_localize(None).dt.normalize()
+    
+            # Guard: if any accidental column leaked in, drop it
+            # (Sometimes a column index name like 'Price' leaks into a column on odd operations)
+            for bad in ["Price", "Unnamed: 0", "Unnamed: 1"]:
+                if bad in price_all.columns:
+                    price_all.drop(columns=[bad], inplace=True)
+    
+            # Ensure standard column order if available
+            # (Some tickers may have missing Adj Close depending on yfinance; handle gracefully)
+            cols_order = ["Date", "Ticker", "Adj Close", "Close", "High", "Low", "Open", "Volume"]
+            existing = [c for c in cols_order if c in price_all.columns]
+            price_all = price_all[existing + [c for c in price_all.columns if c not in existing]]
+    
+            # Force numeric on OHLCV
+            for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+                if col in price_all.columns:
+                    price_all[col] = pd.to_numeric(price_all[col], errors="coerce")
+    
+            # Split out SPY rows into their own df; remove SPY from the equity universe
+            spy_df = price_all.loc[price_all["Ticker"] == "SPY"].copy()
+            price_df = price_all.loc[price_all["Ticker"] != "SPY"].copy()
+    
+            # Save price_df (S&P500 only) and a clean spy_df
+            price_df.to_csv(config.PRICE_DATA_PATH, index=False)
+            self._update_meta(Path(config.PRICE_DATA_PATH).name)
+    
+            # Save SPY separately at the same schema (Date + OHLCV + optional Adj Close)
+            spy_keep = ["Date", "Adj Close", "Close", "High", "Low", "Open", "Volume"]
+            spy_keep = [c for c in spy_keep if c in spy_df.columns]
+            spy_df = spy_df[spy_keep].copy()
+            spy_df.to_csv(config.SPY_DATA_PATH, index=False)
+            self._update_meta(Path(config.SPY_DATA_PATH).name)
+        else:
+            print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
+            price_df = pd.read_csv(config.PRICE_DATA_PATH, parse_dates=["Date"])
+            price_df["Date"] = pd.to_datetime(price_df["Date"]).dt.tz_localize(None).dt.normalize()
+    
+            print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
+            spy_df = pd.read_csv(config.SPY_DATA_PATH, parse_dates=["Date"])
+            spy_df["Date"] = pd.to_datetime(spy_df["Date"]).dt.tz_localize(None).dt.normalize()
+    
+            # Defensive cleanup in case any stale columns linger
+            for bad in ["Price", "Unnamed: 0", "Unnamed: 1"]:
+                if bad in price_df.columns:
+                    price_df.drop(columns=[bad], inplace=True)
+                if bad in spy_df.columns:
+                    spy_df.drop(columns=[bad], inplace=True)
+    
+            for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
+                if col in price_df.columns:
+                    price_df[col] = pd.to_numeric(price_df[col], errors="coerce")
+                if col in spy_df.columns:
+                    spy_df[col] = pd.to_numeric(spy_df[col], errors="coerce")
+    
+        # Sanity: enforce expected minimal schema for downstream code
+        must_have_price = {"Date", "Ticker", "Adj Close", "Close", "High", "Low", "Open", "Volume"}
+        missing = [c for c in (must_have_price - set(price_df.columns))]
+        if missing:
+            print(f"⚠️ price_df missing columns {missing}. Proceeding with available columns.")
+    
+        must_have_spy = {"Date", "Close"}  # minimally needed for market_return merge
+        missing_spy = [c for c in (must_have_spy - set(spy_df.columns))]
+        if missing_spy:
+            print(f"⚠️ spy_df missing columns {missing_spy}. Proceeding with available columns.")
+    
+        # ---------------- Fundamentals ----------------
+        fundamentals_stale = self._is_data_stale(config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
+        if fundamentals_stale:
+            print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
+            available_tickers = price_df["Ticker"].dropna().unique().tolist()
+            rows = []
+            for t in tqdm(available_tickers, desc="Fetching Fundamentals"):
+                try:
+                    info = yf.Ticker(t).info
+                    rows.append({"Ticker": t,
+                                 "trailingPE": info.get("trailingPE"),
+                                 "forwardPE": info.get("forwardPE"),
+                                 "priceToBook": info.get("priceToBook"),
+                                 "enterpriseToEbitda": info.get("enterpriseToEbitda"),
+                                 "profitMargins": info.get("profitMargins")})
+                except Exception:
+                    # tolerate failures; fill NaNs later
+                    rows.append({"Ticker": t,
+                                 "trailingPE": None,
+                                 "forwardPE": None,
+                                 "priceToBook": None,
+                                 "enterpriseToEbitda": None,
+                                 "profitMargins": None})
+            fundamentals_df = pd.DataFrame(rows)
+            fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
+            self._update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
+        else:
+            print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
+            fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)
+            # keep Ticker as a column (your generator merges on 'ticker' after lowercasing)
+            if "Ticker" not in fundamentals_df.columns and "ticker" in fundamentals_df.columns:
+                fundamentals_df.rename(columns={"ticker": "Ticker"}, inplace=True)
+    
+        print("\n--- ✅ All data loaded successfully! ---")
+        return price_df, fundamentals_df, spy_df
+
     # ---------------------------
     # Main orchestrator
     # ---------------------------
+    """
+
     def get_all_data(self):
-        """
-        Orchestrate loading/refresh of:
-          - S&P 500 price data (Date column)
-          - Fundamentals (optional AsOf column; meta otherwise)
-          - SPY market data (Date column)
-        """
+        #Orchestrate loading/refresh of:
+        #  - S&P 500 price data (Date column)
+        #  - Fundamentals (optional AsOf column; meta otherwise)
+        #  - SPY market data (Date column)
         print("\n--- 📊 Loading All Financial Data ---")
 
         # ---------------- Prices ----------------
@@ -200,3 +338,4 @@ class DataManager:
                     
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
+    """
