@@ -170,6 +170,7 @@ class DataManager:
         price_stale = self._is_data_stale(
             config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="Date"
         )
+        price_stale=False
         if price_stale:
             print("⏳ Price data cache is stale. Downloading new data...")
             tickers = self.get_sp500_tickers()
@@ -197,6 +198,7 @@ class DataManager:
         fundamentals_stale = self._is_data_stale(
             config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="AsOf"
         )
+        fundamentals_stale=False
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
             available_tickers = price_df["Ticker"].dropna().unique().tolist()
@@ -240,7 +242,7 @@ class DataManager:
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
             # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
             spy_df = spy_df_raw.copy()
-            spy_df.reset_index(inplace=True)
+            #spy_df.reset_index(inplace=True)
             # 3. SAVE: Save the clean, consistently formatted data for next time.
             self._write_with_meta(spy_df, config.SPY_DATA_PATH)
         else:
