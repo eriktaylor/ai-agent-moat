@@ -83,10 +83,11 @@ class CandidateGenerator:
         fundamentals_df.columns = fundamentals_df.columns.str.lower()
         spy_df.columns = spy_df.columns.str.lower()
 
-        spy_df['ticker'] = 'SPY'
-
-        price_df['date'] = pd.to_datetime(price_df['date'])
-        spy_df['date'] = pd.to_datetime(spy_df['date'])
+        #spy_df['ticker'] = 'SPY'
+        #price_df['date'] = pd.to_datetime(price_df['date'])
+        #spy_df['date'] = pd.to_datetime(spy_df['date'])
+        # nuke the timestamp metadata column; it’s not a feature
+        fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
 
         df = pd.merge(
             price_df,
