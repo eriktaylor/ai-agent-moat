@@ -11,6 +11,7 @@ from tqdm import tqdm
 
 import config
 
+META_PATH = Path(config.DATA_DIR) / "meta.json"
 
 class DataManager:
     """
@@ -24,26 +25,29 @@ class DataManager:
     def __init__(self):
         os.makedirs(config.DATA_DIR, exist_ok=True)
         print(f"Data directory is set to: {config.DATA_DIR}")
-
+        
     # ---------------------------
     # Meta helpers
     # ---------------------------
-    def _write_with_meta(self, df: pd.DataFrame, path: str) -> None:
-        """Write CSV + sidecar meta with UTC fetched_at."""
-        df.to_csv(path, index=False)
-        meta = {"fetched_at": pd.Timestamp.utcnow().isoformat()}
-        with open(f"{path}.meta.json", "w") as f:
-            json.dump(meta, f, indent=2)
 
-    def _read_meta(self, path: str) -> dict | None:
-        meta_path = f"{path}.meta.json"
-        if not os.path.exists(meta_path):
-            return None
-        try:
-            with open(meta_path, "r") as f:
-                return json.load(f)
-        except Exception:
-            return None
+    def _load_meta() -> dict:
+        if META_PATH.exists():
+            try:
+                with open(META_PATH, "r") as f:
+                    return json.load(f)
+            except Exception:
+                return {}
+        return {}
+    
+    def _save_meta(meta: dict) -> None:
+        META_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(META_PATH, "w") as f:
+            json.dump(meta, f, indent=2, sort_keys=True)
+    
+    def _update_meta(filename: str) -> None:
+        meta = _load_meta()
+        meta[filename] = {"fetched_at": datetime.now(timezone.utc).isoformat()}
+        _save_meta(meta)
 
     # ---------------------------
     # Freshness logic
@@ -53,80 +57,31 @@ class DataManager:
         Determine staleness using:
           - meta fetched_at (business days)
           - latest date in CSV (business days)
-          - fallback to file mtime
         Returns True if file is missing, empty, unreadable, or older than threshold.
         """
+        
+        p = Path(path)
+        if not p.exists():
+            return True
+    
+        meta = _load_meta()
+        now_utc = datetime.now(timezone.utc)
+        rec = meta.get(p.name)
+        if rec and "fetched_at" in rec:
+            try:
+                ts = datetime.fromisoformat(rec["fetched_at"])
+                if ts.tzinfo is None:
+                    ts = ts.replace(tzinfo=timezone.utc)
+                return (now_utc - ts) > timedelta(days=max_age_days)
+            except Exception:
+                pass  
         # Missing file
         if not os.path.exists(path):
             print(f"🔎 Freshness: {os.path.basename(path)} → missing → STALE")
             return True
 
-        now = pd.Timestamp.utcnow().normalize()
-
-        # 1) Sidecar meta (preferred)
-        meta = self._read_meta(path)
-        if meta and "fetched_at" in meta:
-            try:
-                fetched_at = pd.to_datetime(meta["fetched_at"], utc=True).normalize()
-                age = now - fetched_at
-                stale = age > BDay(max_age_days)
-                print(
-                    f"🔎 Freshness: {os.path.basename(path)} via meta fetched_at={fetched_at.date()} "
-                    f"(age={age}) → stale={stale}"
-                )
-                return bool(stale)
-            except Exception:
-                # fall through to content-based
-                pass
-
-        # 2) Content-based (latest date in CSV)
-        try:
-            df = pd.read_csv(path)
-            if df.empty:
-                print(f"🔎 Freshness: {os.path.basename(path)} → empty → STALE")
-                return True
-
-            dc = date_col
-            if not dc or dc not in df.columns:
-                # Try to discover a date column if not provided
-                for cand in ("Date", "date", "DATE", "AsOf", "asof"):
-                    if cand in df.columns:
-                        dc = cand
-                        break
-
-            if dc and dc in df.columns:
-                # parse dates
-                df[dc] = pd.to_datetime(df[dc], errors="coerce", utc=True)
-                last = df[dc].max()
-                if pd.isna(last):
-                    print(
-                        f"🔎 Freshness: {os.path.basename(path)} → could not parse '{dc}' → STALE"
-                    )
-                    return True
-                age = now - last.normalize()
-                stale = age > BDay(max_age_days)
-                print(
-                    f"🔎 Freshness: {os.path.basename(path)} via last {dc}={last.date()} "
-                    f"(age={age}) → stale={stale}"
-                )
-                return bool(stale)
-        except Exception:
-            print(f"🔎 Freshness: {os.path.basename(path)} → read/parse error → STALE")
-            return True
-
-        # 3) Fallback to file mtime (least reliable in CI)
-        try:
-            mtime = pd.Timestamp(os.path.getmtime(path), unit="s", tz="UTC").normalize()
-            age = now - mtime
-            stale = age > BDay(max_age_days)
-            print(
-                f"🔎 Freshness: {os.path.basename(path)} via mtime={mtime.date()} "
-                f"(age={age}) → stale={stale}"
-            )
-            return bool(stale)
-        except Exception:
-            print(f"🔎 Freshness: {os.path.basename(path)} → mtime error → STALE")
-            return True
+        # 2) Cannot determine the age of data
+        return True
 
     # ---------------------------
     # Data sources
@@ -184,11 +139,12 @@ class DataManager:
                 .reset_index()
             )
             # Normalize datatypes
-            price_df["Date"] = pd.to_datetime(price_df["Date"], utc=True)
-            self._write_with_meta(price_df, config.PRICE_DATA_PATH)
+            price_df["Date"] = pd.to_datetime(price_df["Date"])
+            price_df.to_csv(config.PRICE_DATA_PATH, index=False)
+            _update_meta(Path(config.PRICE_DATA_PATH).name)        
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
-            price_df = pd.read_csv(config.PRICE_DATA_PATH, parse_dates=["Date"])
+            price_df = pd.read_csv(config.PRICE_DATA_PATH)
         if price_df is None or price_df.empty:
             print("❌ Could not load the main price data. Aborting.")
             return None, None, None
@@ -196,39 +152,23 @@ class DataManager:
         # ---------------- Fundamentals ----------------
         # Treat fundamentals independently (don’t hinge on price staleness)
         fundamentals_stale = self._is_data_stale(
-            config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="AsOf"
+            config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS
         )
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
-            available_tickers = price_df["Ticker"].dropna().unique().tolist()
-            # Pull a small subset of fields; yfinance.info can be slow
-            rows = []
-            for t in tqdm(available_tickers, desc="Fetching Fundamentals"):
-                try:
-                    info = yf.Ticker(t).info
-                except Exception:
-                    info = {}
-                rows.append(
-                    {
-                        "Ticker": t,
-                        "trailingPE": info.get("trailingPE"),
-                        "forwardPE": info.get("forwardPE"),
-                        "priceToBook": info.get("priceToBook"),
-                        "enterpriseToEbitda": info.get("enterpriseToEbitda"),
-                        "profitMargins": info.get("profitMargins"),
-                        # Optional: stamp an AsOf date for content freshness in future
-                        "AsOf": pd.Timestamp.utcnow().normalize(),
-                    }
-                )
-            fundamentals_df = pd.DataFrame(rows)
-            self._write_with_meta(fundamentals_df, config.FUNDAMENTAL_DATA_PATH)
+            #available_tickers = price_df["Ticker"].dropna().unique().tolist()
+            available_tickers = price_df['Ticker'].unique().tolist()
+            #FOR TESTING
+            available_tickers=available_tickers[:10]    
+            data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")] 
+            fundamentals_df = pd.DataFrame(data).set_index('Ticker') 
+            required_cols = ['trailingPE', 'forwardPE', 'priceToBook', 'enterpriseToEbitda', 'profitMargins'] 
+            fundamentals_df = fundamentals_df[[col for col in required_cols if col in fundamentals_df.columns]] 
+            fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
+            _update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
         else:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
-            fundamentals_df = pd.read_csv(
-                config.FUNDAMENTAL_DATA_PATH,
-                parse_dates=["AsOf"],
-                infer_datetime_format=True,
-            )
+            fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
         
         # ---------------- SPY ----------------
         spy_stale = self._is_data_stale(
@@ -243,23 +183,20 @@ class DataManager:
             spy_df = spy_df_raw.copy()
             spy_df.reset_index(inplace=True)
             spy_df.columns = spy_df.columns.get_level_values(0)
+            # Convert numeric columns to numeric types.
+            spy_df['Date'] = pd.to_datetime(spy_df['Date'])
+            numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
+            for col in numeric_cols:
+                if col in spy_df.columns:
+                    spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
+            
             # 3. SAVE: Save the clean, consistently formatted data for next time.
-            self._write_with_meta(spy_df, config.SPY_DATA_PATH)
+            spy_df.to_csv(config.SPY_DATA_PATH, index=False) 
         else:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             # ACQUIRE: Load the already-clean file directly into the final variable.
             spy_df = pd.read_csv(config.SPY_DATA_PATH)
-
-        # Convert numeric columns to numeric types.
-        spy_df['Date'] = pd.to_datetime(spy_df['Date'])
-        numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
-        for col in numeric_cols:
-            if col in spy_df.columns:
-                spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
-            
-        # Optional: drop last row (avoid partial current day)
-        if len(spy_df) > 0:
-            spy_df = spy_df.iloc[:-1].copy()
-        
+            _update_meta(Path(config.SPY_DATA_PATH).name)
+                    
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
