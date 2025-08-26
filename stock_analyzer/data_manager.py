@@ -148,13 +148,8 @@ class DataManager:
     
             # Normalize date (tz-naive daily)
             price_all["Date"] = pd.to_datetime(price_all["Date"]).dt.tz_localize(None).dt.normalize()
-    
-            # Guard: if any accidental column leaked in, drop it
-            # (Sometimes a column index name like 'Price' leaks into a column on odd operations)
-            for bad in ["Price", "Unnamed: 0", "Unnamed: 1"]:
-                if bad in price_all.columns:
-                    price_all.drop(columns=[bad], inplace=True)
-    
+            price_all.columns.name = None
+        
             # Ensure standard column order if available
             # (Some tickers may have missing Adj Close depending on yfinance; handle gracefully)
             cols_order = ["Date", "Ticker", "Adj Close", "Close", "High", "Low", "Open", "Volume"]
@@ -188,14 +183,7 @@ class DataManager:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             spy_df = pd.read_csv(config.SPY_DATA_PATH, parse_dates=["Date"])
             spy_df["Date"] = pd.to_datetime(spy_df["Date"]).dt.tz_localize(None).dt.normalize()
-    
-            # Defensive cleanup in case any stale columns linger
-            for bad in ["Price", "Unnamed: 0", "Unnamed: 1"]:
-                if bad in price_df.columns:
-                    price_df.drop(columns=[bad], inplace=True)
-                if bad in spy_df.columns:
-                    spy_df.drop(columns=[bad], inplace=True)
-    
+        
             for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
                 if col in price_df.columns:
                     price_df[col] = pd.to_numeric(price_df[col], errors="coerce")
