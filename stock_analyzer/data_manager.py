@@ -203,9 +203,37 @@ class DataManager:
     
         # ---------------- Fundamentals ----------------
         fundamentals_stale = self._is_data_stale(config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
+
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
-            available_tickers = price_df["Ticker"].dropna().unique().tolist()
+            available_tickers = price_df["Ticker"].dropna().unique().tolist()        
+            # --- curated, model-friendly shortlist of fundamentals (28 fields) ---
+            fields = [
+                # Valuation / Multiples
+                "trailingPE", "forwardPE", "priceToBook",
+                "priceToSalesTrailing12Months", "enterpriseValue",
+                "enterpriseToRevenue", "enterpriseToEbitda",
+        
+                # Profitability / Margins / Growth
+                "profitMargins", "grossMargins", "operatingMargins",
+                "returnOnAssets", "returnOnEquity",
+                "earningsGrowth", "revenueGrowth",
+        
+                # Scale / P&L / CF / Balance Sheet
+                "totalRevenue", "netIncomeToCommon", "ebitda",
+                "totalCash", "totalDebt", "freeCashflow", "operatingCashflow",
+                "bookValue", "debtToEquity",
+        
+                # Dividends (income factors)
+                "dividendRate", "dividendYield", "payoutRatio", "fiveYearAvgDividendYield",
+        
+                # Risk
+                "beta",
+                # Range context (optional but handy for sanity checks)
+                "fiftyTwoWeekHigh", "fiftyTwoWeekLow",
+            ]
+
+            """
             rows = []
             for t in tqdm(available_tickers, desc="Fetching Fundamentals"):
                 try:
@@ -224,10 +252,47 @@ class DataManager:
                                  "priceToBook": None,
                                  "enterpriseToEbitda": None,
                                  "profitMargins": None})
+            """        
+            rows = []
+            asof_str = pd.Timestamp.utcnow().strftime("%Y-%m-%d")  # date-only snapshot
+        
+            for t in tqdm(available_tickers, desc="Fetching Fundamentals"):
+                rec = {"Ticker": t, "AsOf": asof_str}
+                try:
+                    info = yf.Ticker(t).info
+                except Exception:
+                    info = {}
+        
+                # populate curated fields, None if missing
+                for f in fields:
+                    rec[f] = info.get(f)
+        
+                rows.append(rec)
+        
+            #previous pipeline
+            #fundamentals_df = pd.DataFrame(rows)
+            #fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
+            #self._update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
+
+            #updated pipeline
             fundamentals_df = pd.DataFrame(rows)
+            # Coerce numerics (leave 'Ticker' as string and 'AsOf' as date-string)
+            numeric_cols = [c for c in fundamentals_df.columns if c not in ("Ticker", "AsOf")]
+            fundamentals_df[numeric_cols] = fundamentals_df[numeric_cols].apply(
+                pd.to_numeric, errors="coerce"
+            )
+        
+            # Optional: drop rows with all-NaN numerics (keeps at least some signal per ticker)
+            has_any_numeric = fundamentals_df[numeric_cols].notna().any(axis=1)
+            fundamentals_df = fundamentals_df[has_any_numeric].reset_index(drop=True)
+        
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
             self._update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
         else:
+            #previous pipeline
+            #print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
+            #fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)            
+            #updated pipeline
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH)
             # keep Ticker as a column (your generator merges on 'ticker' after lowercasing)
