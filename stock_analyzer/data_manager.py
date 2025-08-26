@@ -130,7 +130,7 @@ class DataManager:
         if price_stale:
             print("⏳ Price data cache is stale. Downloading new data (S&P 500 + SPY)...")
             tickers = self.get_sp500_tickers()
-            #tickers=tickers[:10] #FOR DEBUGGING
+            tickers=tickers[:50] #FOR DEBUGGING
             if not tickers:
                 return None, None, None
             # Add SPY once, here
