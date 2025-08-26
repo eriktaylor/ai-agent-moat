@@ -142,7 +142,7 @@ class DataManager:
             )
             # Normalize datatypes
             price_df["Date"] = pd.to_datetime(price_df["Date"])
-            price_df.to_csv(config.PRICE_DATA_PATH, index=False)
+            price_df.to_csv(config.PRICE_DATA_PATH)
             self._update_meta(Path(config.PRICE_DATA_PATH).name)        
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
@@ -191,7 +191,7 @@ class DataManager:
                     spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
             
             # 3. SAVE: Save the clean, consistently formatted data for next time.
-            spy_df.to_csv(config.SPY_DATA_PATH, index=False) 
+            spy_df.to_csv(config.SPY_DATA_PATH) 
         else:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             # ACQUIRE: Load the already-clean file directly into the final variable.
