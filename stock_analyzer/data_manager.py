@@ -3,6 +3,7 @@
 import os
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import pandas as pd
 import yfinance as yf
@@ -11,8 +12,7 @@ from tqdm import tqdm
 
 import config
 
-META_PATH = os.path.join(config.DATA_DIR, "meta.json") 
-#META_PATH = Path(config.DATA_DIR) / "meta.json"
+META_PATH = Path(config.DATA_DIR) / "meta.json"
 
 class DataManager:
     """
