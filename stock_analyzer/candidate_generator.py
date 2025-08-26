@@ -103,7 +103,7 @@ class CandidateGenerator:
 
         # --- Momentum and Volatility Features ---
         grouped_by_ticker = features_df.groupby('ticker')
-        for lag in [5, 21, 63, 252]:
+        for lag in [21, 63, 252]:
             features_df[f'return_{lag}d'] = grouped_by_ticker['adj close'].transform(lambda x: x.pct_change(lag))
 
         log_returns = np.log(grouped_by_ticker['adj close'].transform(lambda x: x / x.shift(1)))
