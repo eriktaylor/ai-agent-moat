@@ -79,19 +79,17 @@ class CandidateGenerator:
         """
         Main method to run feature engineering, model training, and candidate prediction.
         """
+        #label "missing" dividends: a potential feature.
+        for col in ["dividendRate", "dividendYield", "fiveYearAvgDividendYield"]:
+            fundamentals_df[f"{col}_is_missing"] = fundamentals_df[col].isna().astype(int)
+
+        #convert to lower-case
         price_df.columns = price_df.columns.str.lower()
         fundamentals_df.columns = fundamentals_df.columns.str.lower()
         spy_df.columns = spy_df.columns.str.lower()
 
-        #spy_df['ticker'] = 'SPY'
-        #price_df['date'] = pd.to_datetime(price_df['date'])
-        #spy_df['date'] = pd.to_datetime(spy_df['date'])
         # nuke the timestamp metadata column; it’s not a feature
         fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
-
-        #label "missing" dividends: a potential feature.
-        for col in ["dividendRate", "dividendYield", "fiveYearAvgDividendYield"]:
-            fundamentals_df[f"{col}_is_missing"] = fundamentals_df[col].isna().astype(int)
 
         df = pd.merge(
             price_df,
