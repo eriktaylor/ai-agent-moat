@@ -138,7 +138,7 @@ class DataManager:
                 yf.download(tickers, period=config.YFINANCE_PERIOD, auto_adjust=False)
                 .stack(level=1)
                 .rename_axis(["Date", "Ticker"])
-                #.reset_index()
+                .reset_index()
             )
             # Normalize datatypes
             price_df["Date"] = pd.to_datetime(price_df["Date"])
@@ -181,7 +181,7 @@ class DataManager:
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
             # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
             spy_df = spy_df_raw.copy()
-            #spy_df.reset_index(inplace=True)
+            spy_df.reset_index(inplace=True)
             spy_df.columns = spy_df.columns.get_level_values(0)
             # Convert numeric columns to numeric types.
             spy_df['Date'] = pd.to_datetime(spy_df['Date'])
