@@ -142,7 +142,7 @@ class DataManager:
             # Normalize datatypes
             price_df["Date"] = pd.to_datetime(price_df["Date"])
             price_df.to_csv(config.PRICE_DATA_PATH, index=False)
-            _update_meta(Path(config.PRICE_DATA_PATH).name)        
+            self._update_meta(Path(config.PRICE_DATA_PATH).name)        
         else:
             print(f"✅ Loading fresh cached price data from {config.PRICE_DATA_PATH}...")
             price_df = pd.read_csv(config.PRICE_DATA_PATH)
@@ -166,7 +166,7 @@ class DataManager:
             required_cols = ['trailingPE', 'forwardPE', 'priceToBook', 'enterpriseToEbitda', 'profitMargins'] 
             fundamentals_df = fundamentals_df[[col for col in required_cols if col in fundamentals_df.columns]] 
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
-            _update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
+            self._update_meta(Path(config.FUNDAMENTAL_DATA_PATH).name)
         else:
             print(f"✅ Loading fresh cached fundamental data from {config.FUNDAMENTAL_DATA_PATH}...")
             fundamentals_df = pd.read_csv(config.FUNDAMENTAL_DATA_PATH, index_col='Ticker')
@@ -197,7 +197,7 @@ class DataManager:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             # ACQUIRE: Load the already-clean file directly into the final variable.
             spy_df = pd.read_csv(config.SPY_DATA_PATH)
-            _update_meta(Path(config.SPY_DATA_PATH).name)
+            self._update_meta(Path(config.SPY_DATA_PATH).name)
                     
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
