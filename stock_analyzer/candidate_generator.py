@@ -5,6 +5,13 @@ import numpy as np
 import lightgbm as lgb
 import config
 
+# at top of file (optional dependency)
+try:
+    import shap  # pip install shap
+    _HAVE_SHAP = True
+except Exception:
+    _HAVE_SHAP = False
+
 class CandidateGenerator:
     """
     Uses a machine learning model to screen and rank stocks based on quantitative factors.
