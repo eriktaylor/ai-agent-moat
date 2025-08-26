@@ -233,33 +233,30 @@ class DataManager:
         spy_stale = self._is_data_stale(
             config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="Date"
         )
-        
-        # Check if the data file is missing or stale. 
-    	if spy_stale: 
-    		print("⏳ Refreshing SPY data...") 
-    		# 1. ACQUIRE: Download fresh data from yfinance. 
-    		spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True) 
-    		# 2. CLEAN & PREPARE: Copy the raw data and reset the index. 
-    		spy_df = spy_df_raw.copy() 
-    		spy_df.reset_index(inplace=True) 
-    		# 3. SAVE: Save the clean, consistently formatted data for next time. 
+        # Check if the data file is missing or stale.            
+        if spy_stale:
+            print("⏳ Refreshing SPY data...")
+            # 1. ACQUIRE: Download fresh data from yfinance.
+            spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
+            # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
+            spy_df = spy_df_raw.copy()
+            spy_df.reset_index(inplace=True)
+            # 3. SAVE: Save the clean, consistently formatted data for next time.
             self._write_with_meta(spy_df, config.SPY_DATA_PATH)
-    		#spy_df.to_csv(config.SPY_DATA_PATH, index=False) 
-    	else: 
-    		print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...") 
-    		# ACQUIRE: Load the already-clean file directly into the final variable. 
-    		spy_df = pd.read_csv(config.SPY_DATA_PATH) 
+        else:
+            print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
+            # ACQUIRE: Load the already-clean file directly into the final variable.
+            spy_df = pd.read_csv(config.SPY_DATA_PATH)
         
+        # Convert numeric columns to numeric types.
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
-        
-        # Convert numeric columns to numeric types. 
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
-    	for col in numeric_cols: if col in spy_df.columns: 
-    	    spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
-    	
+        for col in numeric_cols: if col in spy_df.columns: 
+            spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
+            
         # Optional: drop first row (avoid partial first day)
         if len(spy_df) > 0:
             spy_df = spy_df.iloc[1:].copy()
-
+        
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
