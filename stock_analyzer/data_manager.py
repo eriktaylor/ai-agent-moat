@@ -126,7 +126,6 @@ class DataManager:
         price_stale = self._is_data_stale(
             config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="Date"
         )
-        price_stale=False
         if price_stale:
             print("⏳ Price data cache is stale. Downloading new data...")
             tickers = self.get_sp500_tickers()
@@ -157,15 +156,10 @@ class DataManager:
         )
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
-            #available_tickers = price_df["Ticker"].dropna().unique().tolist()
-            available_tickers = price_df['Ticker'].unique().tolist()
-            #FOR TESTING
-            available_tickers=available_tickers[:10]    
+            available_tickers = price_df["Ticker"].dropna().unique().tolist()
+            #available_tickers = price_df['Ticker'].unique().tolist()
             data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")] 
             fundamentals_df = pd.DataFrame(data).set_index('Ticker') 
-            print('prior to cleaning...')
-            for item in fundamentals_df.columns:
-                print(item)
             required_cols = ['trailingPE', 'forwardPE', 'priceToBook', 'enterpriseToEbitda', 'profitMargins'] 
             fundamentals_df = fundamentals_df[[col for col in required_cols if col in fundamentals_df.columns]] 
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
