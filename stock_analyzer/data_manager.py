@@ -129,7 +129,7 @@ class DataManager:
         if price_stale:
             print("⏳ Price data cache is stale. Downloading new data...")
             tickers = self.get_sp500_tickers()
-            tickers=tickers[10:]
+            tickers=tickers[:10]
             print(tickers)
             if not tickers:
                 return None, None, None
