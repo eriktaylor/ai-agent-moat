@@ -163,8 +163,8 @@ class CandidateGenerator:
         Main method to run feature engineering, model training, and candidate prediction.
         """
         #label "missing" dividends: a potential feature.
-        for col in ["dividendRate", "dividendYield", "fiveYearAvgDividendYield"]:
-            fundamentals_df[f"{col}_is_missing"] = fundamentals_df[col].isna().astype(int)
+        #for col in ["dividendRate", "dividendYield", "fiveYearAvgDividendYield"]:
+        #    fundamentals_df[f"{col}_is_missing"] = fundamentals_df[col].isna().astype(int)
 
         #convert to lower-case
         price_df.columns = price_df.columns.str.lower()
