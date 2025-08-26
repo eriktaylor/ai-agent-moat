@@ -228,14 +228,13 @@ class DataManager:
                 parse_dates=["AsOf"],
                 infer_datetime_format=True,
             )
-
+        
         # ---------------- SPY ----------------
         spy_stale = self._is_data_stale(
             config.SPY_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="Date"
         )
-
+        
         # Check if the data file is missing or stale. 
-
     	if spy_stale: 
     		print("⏳ Refreshing SPY data...") 
     		# 1. ACQUIRE: Download fresh data from yfinance. 
@@ -251,38 +250,14 @@ class DataManager:
     		# ACQUIRE: Load the already-clean file directly into the final variable. 
     		spy_df = pd.read_csv(config.SPY_DATA_PATH) 
         
-        #if spy_stale:
-        #    spy_df["Date"] = pd.to_datetime(spy_df["Date"], utc=True)
-        #    
-        #else:
-        #    print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
-        #    spy_df = pd.read_csv(config.SPY_DATA_PATH, parse_dates=["Date"])
-        # Convert 'Date' column to datetime objects. 
-    	
-        spy_df['Date'] = pd.to_datetime(spy_df['Date']) 
-
-    	# Convert numeric columns to numeric types. 
+        spy_df['Date'] = pd.to_datetime(spy_df['Date'])
+        
+        # Convert numeric columns to numeric types. 
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
     	for col in numeric_cols: if col in spy_df.columns: 
     	    spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
-    	    
-        #spy_df = spy_df.iloc[1:].copy() #skip first line 
-        #print("\n--- ✅ All data loaded successfully! ---") 
-    	#return price_df, fundamentals_df, spy_df
-
-        # ---------------- Normalize types / light cleanup ----------------
-        # Price types
-        #for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
-        #    if col in price_df.columns:
-        #        price_df[col] = pd.to_numeric(price_df[col], errors="coerce")
-
-        # SPY types
-        #for col in ["Open", "High", "Low", "Close", "Adj Close", "Volume"]:
-        #    if col in spy_df.columns:
-        #        spy_df[col] = pd.to_numeric(spy_df[col], errors="coerce")
-
-        # Optional: drop first row, as your previous script did
-        # (If that was intentional to avoid partial first day)
+    	
+        # Optional: drop first row (avoid partial first day)
         if len(spy_df) > 0:
             spy_df = spy_df.iloc[1:].copy()
 
