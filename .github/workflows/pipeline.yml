@@ -164,6 +164,7 @@ jobs:
           name: pipeline-results
           path: |
             data/*.csv
+            data/meta.json
             data/search_cache/*.json
             data/search_cache/_manifest_cache.txt
           if-no-files-found: warn
