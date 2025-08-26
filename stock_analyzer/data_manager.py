@@ -241,7 +241,8 @@ class DataManager:
             spy_df_raw = yf.download('SPY', period=config.YFINANCE_PERIOD, auto_adjust=True)
             # 2. CLEAN & PREPARE: Copy the raw data and reset the index.
             spy_df = spy_df_raw.copy()
-            #spy_df.reset_index(inplace=True)
+            spy_df.reset_index(inplace=True)
+            spy_df.columns = spy_df.columns.get_level_values(0)
             # 3. SAVE: Save the clean, consistently formatted data for next time.
             self._write_with_meta(spy_df, config.SPY_DATA_PATH)
         else:
@@ -250,17 +251,15 @@ class DataManager:
             spy_df = pd.read_csv(config.SPY_DATA_PATH)
 
         # Convert numeric columns to numeric types.
-        """
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
         for col in numeric_cols:
             if col in spy_df.columns:
                 spy_df[col] = pd.to_numeric(spy_df[col], errors='coerce') 
             
-        # Optional: drop first row (avoid partial first day)
+        # Optional: drop last row (avoid partial current day)
         if len(spy_df) > 0:
-            spy_df = spy_df.iloc[1:].copy()
-        """
+            spy_df = spy_df.iloc[:-1].copy()
         
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
