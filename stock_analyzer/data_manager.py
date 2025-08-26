@@ -31,7 +31,7 @@ class DataManager:
     # Meta helpers
     # ---------------------------
 
-    def _load_meta() -> dict:
+    def _load_meta(self) -> dict:
         if META_PATH.exists():
             try:
                 with open(META_PATH, "r") as f:
@@ -40,15 +40,15 @@ class DataManager:
                 return {}
         return {}
     
-    def _save_meta(meta: dict) -> None:
+    def _save_meta(self, meta: dict) -> None:
         META_PATH.parent.mkdir(parents=True, exist_ok=True)
         with open(META_PATH, "w") as f:
             json.dump(meta, f, indent=2, sort_keys=True)
     
-    def _update_meta(filename: str) -> None:
-        meta = _load_meta()
+    def _update_meta(self, filename: str) -> None:
+        meta = self._load_meta()
         meta[filename] = {"fetched_at": datetime.now(timezone.utc).isoformat()}
-        _save_meta(meta)
+        self._save_meta(meta)
 
     # ---------------------------
     # Freshness logic
@@ -65,7 +65,7 @@ class DataManager:
         if not p.exists():
             return True
     
-        meta = _load_meta()
+        meta = self._load_meta()
         now_utc = datetime.now(timezone.utc)
         rec = meta.get(p.name)
         if rec and "fetched_at" in rec:
