@@ -11,7 +11,8 @@ from tqdm import tqdm
 
 import config
 
-META_PATH = Path(config.DATA_DIR) / "meta.json"
+META_PATH = os.path.join(config.DATA_DIR, "meta.json") 
+#META_PATH = Path(config.DATA_DIR) / "meta.json"
 
 class DataManager:
     """
