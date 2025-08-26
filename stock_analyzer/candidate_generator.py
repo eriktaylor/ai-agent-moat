@@ -89,6 +89,10 @@ class CandidateGenerator:
         # nuke the timestamp metadata column; it’s not a feature
         fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
 
+        #label "missing" dividends: a potential feature.
+        for col in ["dividendRate", "dividendYield", "fiveYearAvgDividendYield"]:
+            fundamentals_df[f"{col}_is_missing"] = fundamentals_df[col].isna().astype(int)
+
         df = pd.merge(
             price_df,
             fundamentals_df.drop(columns=['date'], errors='ignore'),
