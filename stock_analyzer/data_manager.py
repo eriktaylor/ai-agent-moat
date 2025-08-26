@@ -247,8 +247,9 @@ class DataManager:
             print(f"✅ Loading clean cached SPY data from {config.SPY_DATA_PATH}...")
             # ACQUIRE: Load the already-clean file directly into the final variable.
             spy_df = pd.read_csv(config.SPY_DATA_PATH)
-        
+
         # Convert numeric columns to numeric types.
+        """
         spy_df['Date'] = pd.to_datetime(spy_df['Date'])
         numeric_cols = ['Open', 'High', 'Low', 'Close', 'Volume'] 
         for col in numeric_cols:
@@ -258,6 +259,7 @@ class DataManager:
         # Optional: drop first row (avoid partial first day)
         if len(spy_df) > 0:
             spy_df = spy_df.iloc[1:].copy()
+        """
         
         print("\n--- ✅ All data loaded successfully! ---")
         return price_df, fundamentals_df, spy_df
