@@ -9,7 +9,83 @@ class CandidateGenerator:
     """
     Uses a machine learning model to screen and rank stocks based on quantitative factors.
     This version includes fixes for data leakage and improved data handling.
-    """
+    """    
+    def _importance_and_shap_report(
+        self,
+        model: lgb.LGBMClassifier,
+        X_train: pd.DataFrame,
+        shap_sample_size: int = 5000,
+        random_state: int = 42,
+    ) -> dict:
+        """
+        Returns a consolidated importance report:
+          - gain_importance: DataFrame[Feature, Gain]
+          - shap_importance: DataFrame[Feature, MeanAbsSHAP] (None if shap unavailable)
+          - combined: DataFrame with both + ranks (where available)
+          - suggested_drop: list[str] low-impact features suggested for pruning
+        """
+        # ---- Gain-based importance (more meaningful than split count) ----
+        booster = model.booster_
+        gain_vals = booster.feature_importance(importance_type="gain")
+        feat_names = booster.feature_name()
+        gain_df = (
+            pd.DataFrame({"Feature": feat_names, "Gain": gain_vals})
+            .sort_values("Gain", ascending=False)
+            .reset_index(drop=True)
+        )
+
+        # ---- SHAP (optional, sampled to keep it fast) ----
+        shap_df = None
+        if _HAVE_SHAP:
+            # Sample to control cost
+            if len(X_train) > shap_sample_size:
+                X_for_shap = X_train.sample(shap_sample_size, random_state=random_state)
+            else:
+                X_for_shap = X_train
+
+            # TreeExplainer is fast/accurate for tree models
+            explainer = shap.TreeExplainer(model, feature_names=list(X_train.columns))
+            shap_values = explainer.shap_values(X_for_shap)
+            # For binary classifier, shap_values is (n_samples, n_features)
+            if isinstance(shap_values, list):  # some wrappers return list
+                shap_values = shap_values[1] if len(shap_values) > 1 else shap_values[0]
+            mean_abs = np.abs(shap_values).mean(axis=0)
+
+            shap_df = (
+                pd.DataFrame({"Feature": X_for_shap.columns, "MeanAbsSHAP": mean_abs})
+                .sort_values("MeanAbsSHAP", ascending=False)
+                .reset_index(drop=True)
+            )
+
+        # ---- Combine + ranks ----
+        combined = gain_df.copy()
+        combined["GainRank"] = combined["Gain"].rank(ascending=False, method="dense")
+        if shap_df is not None:
+            combined = combined.merge(shap_df, on="Feature", how="left")
+            combined["SHAPRank"] = combined["MeanAbsSHAP"].rank(
+                ascending=False, method="dense"
+            )
+
+        # ---- Suggested prune list (conservative) ----
+        # Rule: candidates w/ zero (or near-zero) gain AND tiny mean |SHAP|
+        suggested_drop: list[str] = []
+        if shap_df is not None:
+            # Threshold ~ small fraction of SHAP scale; tweak as needed
+            shap_floor = max(shap_df["MeanAbsSHAP"].median() * 0.05,
+                             shap_df["MeanAbsSHAP"].max() * 0.01)
+            low_shap = set(shap_df.loc[shap_df["MeanAbsSHAP"] <= shap_floor, "Feature"])
+            zero_gain = set(gain_df.loc[gain_df["Gain"] <= 0, "Feature"])
+            suggested_drop = sorted(low_shap & zero_gain)
+        else:
+            # If no SHAP, drop only features with zero gain
+            suggested_drop = sorted(gain_df.loc[gain_df["Gain"] <= 0, "Feature"])
+
+        return {
+            "gain_importance": gain_df,
+            "shap_importance": shap_df,    # may be None
+            "combined": combined,
+            "suggested_drop": suggested_drop,
+        }
 
     def _create_features(self, df, spy_df):
         """
@@ -148,7 +224,7 @@ class CandidateGenerator:
         top_candidates.to_csv(config.CANDIDATE_RESULTS_PATH, index=False)
 
         # NEW: consolidated importance + SHAP report
-        #report = self._importance_and_shap_report(prod_model, X_train)
+        report = self._importance_and_shap_report(prod_model, X_train)
         
-        #return top_candidates, feature_imp_sorted, report
-        return top_candidates, feature_imp_sorted
+        return top_candidates, feature_imp_sorted, report
+        #return top_candidates, feature_imp_sorted
