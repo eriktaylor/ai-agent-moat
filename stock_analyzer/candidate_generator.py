@@ -173,6 +173,9 @@ class CandidateGenerator:
 
         # nuke the timestamp metadata column; it’s not a feature
         fundamentals_df = fundamentals_df.drop(columns=['asof'], errors='ignore')
+        #We calculate 63-day rolling beta, this one is provided by Yahoo finance (5-year beta).
+        fundamentals_df = fundamentals_df.drop(columns=['beta'], errors='ignore')
+        
 
         df = pd.merge(
             price_df,
