@@ -198,7 +198,6 @@ class DataManager:
         fundamentals_stale = self._is_data_stale(
             config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS, date_col="AsOf"
         )
-        fundamentals_stale=False
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
             available_tickers = price_df["Ticker"].dropna().unique().tolist()
