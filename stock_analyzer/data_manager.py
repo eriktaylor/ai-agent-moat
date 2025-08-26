@@ -163,6 +163,8 @@ class DataManager:
             available_tickers=available_tickers[:10]    
             data = [{'Ticker': t, **yf.Ticker(t).info} for t in tqdm(available_tickers, desc="Fetching Fundamentals")] 
             fundamentals_df = pd.DataFrame(data).set_index('Ticker') 
+            print('prior to cleaning...')
+            print(fundamentals_df.columns)
             required_cols = ['trailingPE', 'forwardPE', 'priceToBook', 'enterpriseToEbitda', 'profitMargins'] 
             fundamentals_df = fundamentals_df[[col for col in required_cols if col in fundamentals_df.columns]] 
             fundamentals_df.to_csv(config.FUNDAMENTAL_DATA_PATH, index=False)
