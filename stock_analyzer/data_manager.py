@@ -53,7 +53,7 @@ class DataManager:
     # ---------------------------
     # Freshness logic
     # ---------------------------
-    def _is_data_stale(self, path: str, max_age_days: int, *, date_col: str | None) -> bool:
+    def _is_data_stale(self, path: str, max_age_days: int, *, date_col: str | None = None) -> bool:
         """
         Determine staleness using:
           - meta fetched_at (business days)
