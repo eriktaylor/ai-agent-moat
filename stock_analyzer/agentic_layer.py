@@ -489,10 +489,11 @@ class AgenticLayer:
         except FileNotFoundError:
             logging.info("No previous agentic recommendations found.")
             prev_df = pd.DataFrame()
-
+        
         # Scout for new names (validated)
         #new_tickers = self._run_scout_agent(known_tickers)
-        
+        new_tickers = []
+
         # Take top quant names
         #OLD VERSION
         #top_n = getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10)
