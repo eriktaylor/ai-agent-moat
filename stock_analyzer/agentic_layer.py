@@ -63,6 +63,122 @@ except Exception:
     HAVE_BS4 = False
 
 
+def _get_last(df, rows):
+    """Return the most recent value for the first matching row name in `rows`."""
+    try:
+        if df is None or df.empty:
+            return None
+        for name in rows:
+            if name in df.index:
+                # yfinance financials/balance_sheet columns are datestamps; get latest (leftmost)
+                val = df.loc[name].dropna()
+                if not val.empty:
+                    return float(val.iloc[0])
+    except Exception:
+        pass
+    return None
+
+def _collect_financials(ticker: str) -> dict:
+    tk = yf.Ticker(ticker)
+    info = tk.info or {}
+    fast = getattr(tk, "fast_info", None) or {}
+
+    # Statements (robust to field-name variants)
+    try:
+        bs = tk.balance_sheet  # annual
+    except Exception:
+        bs = pd.DataFrame()
+    try:
+        cf = tk.cashflow  # annual
+    except Exception:
+        cf = pd.DataFrame()
+    try:
+        fin = tk.financials  # annual income statement
+    except Exception:
+        fin = pd.DataFrame()
+
+    mcap = info.get("marketCap") or fast.get("market_cap")
+    price = fast.get("last_price") or info.get("regularMarketPrice")
+
+    total_debt = _get_last(bs, [
+        "Total Debt", "Short Long Term Debt", "Short/Long Term Debt", "Long Term Debt And Capital Lease Obligation",
+        "Total Debt Net"
+    ])
+    equity = _get_last(bs, [
+        "Total Stockholder Equity", "Total Equity Gross Minority Interest", "Total Equity"
+    ])
+    cash = _get_last(bs, [
+        "Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments", "Cash"
+    ])
+    ebitda = _get_last(fin, ["Ebitda", "EBITDA"])
+
+    # Free Cash Flow = Operating Cash Flow + Capital Expenditures (capex is typically negative)
+    ocf = _get_last(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
+    capex = _get_last(cf, ["Capital Expenditures"])
+    fcf = None
+    if ocf is not None and capex is not None:
+        fcf = float(ocf + capex)
+
+    # Dividends / Yield
+    dividend_yield = info.get("dividendYield")
+    if dividend_yield is None:
+        try:
+            divs = tk.dividends
+            if price and divs is not None and not divs.empty:
+                trailing_12m = divs[divs.index >= (divs.index.max() - pd.DateOffset(years=1))].sum()
+                if trailing_12m and price:
+                    dividend_yield = float(trailing_12m / price)
+        except Exception:
+            pass
+
+    # Ratios
+    price_to_book = info.get("priceToBook")
+    if price_to_book is None and mcap and equity and equity != 0:
+        price_to_book = float(mcap / equity)
+
+    debt_to_equity = None
+    if total_debt is not None and equity not in (None, 0):
+        debt_to_equity = float(total_debt / equity)
+
+    ev = None
+    if mcap is not None:
+        ev = float(mcap + (total_debt or 0) - (cash or 0))
+    ev_to_ebitda = None
+    if ev is not None and ebitda not in (None, 0):
+        ev_to_ebitda = float(ev / ebitda)
+
+    # Light sanity caps (avoid absurd numbers from info)
+    def _cap(x, lo, hi):
+        try:
+            x = float(x)
+            if x < lo or x > hi:
+                return None
+            return x
+        except Exception:
+            return None
+
+    trailing_pe = _cap(info.get("trailingPE"), 0, 5000)
+    forward_pe  = _cap(info.get("forwardPE"), 0, 5000)
+    fifty_two_high = _cap(info.get("fiftyTwoWeekHigh"), 0, 1e6)
+    fifty_two_low  = _cap(info.get("fiftyTwoWeekLow"), 0, 1e6)
+
+    return {
+        "longName": info.get("longName") or ticker,
+        "sector": info.get("sector") or "N/A",
+        "marketCap": mcap,
+        "price": price,
+        "trailingPE": trailing_pe,
+        "forwardPE": forward_pe,
+        "priceToBook": price_to_book,
+        "debtToEquity": debt_to_equity,
+        "freeCashFlow": fcf,
+        "dividendYield": dividend_yield,
+        "fiftyTwoWeekHigh": fifty_two_high,
+        "fiftyTwoWeekLow": fifty_two_low,
+        "EV_EBITDA": ev_to_ebitda,
+    }
+
+
 def _cache_filename(query: str, bucket: int) -> str:
     # stable readable prefix + short digest to avoid collisions
     key = re.sub(r"[^a-zA-Z0-9]+", "_", query)[:100]
@@ -411,6 +527,8 @@ class AgenticLayer:
             logging.error(f"Yahoo Finance API error for {ticker}: {e}")
             return {"error": str(e)}
 
+        """
+        #Old method of collecting financial data
         company_name = stock_info.get("longName", ticker)
         financial_data = {
             "longName": company_name,
@@ -421,6 +539,11 @@ class AgenticLayer:
             "fiftyTwoWeekHigh": stock_info.get("fiftyTwoWeekHigh", "N/A"),
             "fiftyTwoWeekLow": stock_info.get("fiftyTwoWeekLow", "N/A"),
         }
+        """
+        # NEW: Drop in method
+        financial_data = _collect_financials(ticker)
+        company_name = financial_data.get("longName", ticker)
+
 
         # Fresh news: bias toward recent years; keep site: filters plain
         this_year = datetime.utcnow().year
@@ -464,7 +587,8 @@ class AgenticLayer:
         pro_hits = 0
         retail_hits = 0
         fulltext_hits = 0  # count of results where we fetched article body (not just snippet)
-
+        evidence_items = []
+    
         for category, query in news_queries.items():
             news_context += f"\n--- {category} ---\n"
             try:
@@ -491,8 +615,46 @@ class AgenticLayer:
                         excerpt = _re.sub(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\.? \d{1,2}, \d{4}\b", "", excerpt, flags=_re.I)
                         excerpt = _re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", excerpt)
 
+                                evidence_items.append({
+                            "dom": dom,
+                            "title": title,
+                            "excerpt": excerpt,
+                            "category": category,
+                            "has_body": bool(body),
+                        })
+
+                        EVIDENCE_BUDGET = getattr(config, "EVIDENCE_BUDGET", 14)
+                        PER_DOMAIN_CAP = getattr(config, "PER_DOMAIN_CAP", 2)
+                        
+                        # Prefer full-text + pro domains, then fill diversity
+                        pro_like = tuple(["reuters.com","ft.com","wsj.com","bloomberg.com","sec.gov","cnbc.com","finance.yahoo.com","investor.","ir."])
+                        def _score(it):
+                            s = 0
+                            if it["has_body"]: s += 2
+                            if any(d in (it["dom"] or "") for d in pro_like): s += 1
+                            return (s, it["dom"] or "", it["title"] or "")
+                        
+                        selected = []
+                        per_dom = {}
+                        for it in sorted(evidence_items, key=_score, reverse=True):
+                            dom = it["dom"] or ""
+                            if per_dom.get(dom, 0) >= PER_DOMAIN_CAP:
+                                continue
+                            selected.append(it)
+                            per_dom[dom] = per_dom.get(dom, 0) + 1
+                            if len(selected) >= EVIDENCE_BUDGET:
+                                break
+                        
+                        # Build the actual persona context from `selected`
+                        news_context = ""
+                        for category in ["Professional & Financial Analysis", "Retail & Social Sentiment", "Risk Factors & Negative News"]:
+                            news_context += f"\n--- {category} ---\n"
+                            for it in selected:
+                                if it["category"] == category:
+                                    news_context += f"**{it['title'] or 'No Title'}** ({it['dom'] or 'n/a'}): {it['excerpt']}\n"
+
                         #news_context += f"**{title}** ({dom}): {excerpt}\n"
-                        news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
+                        #news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
 
                         # NEW: tally quality & diversity
                         if dom:
@@ -547,7 +709,6 @@ class AgenticLayer:
                 if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
                 if any(p.search(lower_blob) for p in risk_patterns): risk_flag = True
 
-
         # Persona analysis with hallucination guardrails
         personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
         system_prompt = (
@@ -600,6 +761,12 @@ class AgenticLayer:
             "retail_hits": retail_hits,
             "fulltext_hits": fulltext_hits,
             "missing_financials": missing_financials,
+        })
+
+        reports["_meta"].update({
+            "evidence_collected": len(evidence_items),
+            "evidence_used": len(selected),
+            "domains_used": sorted({it["dom"] for it in selected if it["dom"]}),
         })
 
         return reports
@@ -834,6 +1001,9 @@ class AgenticLayer:
                 'Market_Investor_Analysis': reports.get('Market Investor', 'N/A'),
                 'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
                 'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A')
+                'Evidence_Total': meta.get('evidence_collected'),
+                'Evidence_Used': meta.get('evidence_used'),
+                'Domains_Used': ", ".join(meta.get('domains_used', []))[:1000],
             })
 
         # === carry-forward snapshot ===
@@ -851,7 +1021,7 @@ class AgenticLayer:
             prev_latest.update(today_idxed)
             snapshot_df = prev_latest.combine_first(today_idxed).reset_index()
         else:
-            snapshot_df = results_df.copy()
+            snapshot_df = results_df.copy()        
 
         # Final ordering & date formatting
         snapshot_df['Analysis_Date'] = pd.to_datetime(snapshot_df['Analysis_Date']).dt.date.astype(str)
