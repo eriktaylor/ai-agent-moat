@@ -79,7 +79,6 @@ def _get_last(df, rows):
         pass
     return None
 
-
 def _collect_financials(ticker: str) -> dict:
     tk = yf.Ticker(ticker)
     info = tk.info or {}
@@ -99,27 +98,41 @@ def _collect_financials(ticker: str) -> dict:
     except Exception:
         fin = pd.DataFrame()
 
-    mcap = info.get("marketCap") or fast.get("market_cap")
+    mcap  = info.get("marketCap") or fast.get("market_cap")
     price = fast.get("last_price") or info.get("regularMarketPrice")
 
+    # Balance sheet bits
     total_debt = _get_last(bs, [
         "Total Debt", "Short Long Term Debt", "Short/Long Term Debt",
         "Long Term Debt And Capital Lease Obligation", "Total Debt Net"
-    ])
+    ]) or info.get("totalDebt")
+
     equity = _get_last(bs, [
         "Total Stockholder Equity", "Total Equity Gross Minority Interest", "Total Equity"
     ])
+
     cash = _get_last(bs, [
         "Cash And Cash Equivalents", "Cash Cash Equivalents And Short Term Investments", "Cash"
-    ])
-    ebitda = _get_last(fin, ["Ebitda", "EBITDA"])
+    ]) or info.get("totalCash")
 
-    # Free Cash Flow = Operating Cash Flow + Capital Expenditures (capex is typically negative)
+    # Income statement / EBITDA
+    ebitda = _get_last(fin, ["Ebitda", "EBITDA"]) or info.get("ebitda")
+
+    # Free Cash Flow = Operating Cash Flow + CapEx (capex negative)
     ocf = _get_last(cf, ["Total Cash From Operating Activities", "Operating Cash Flow"])
+    if ocf is None:
+        ocf = info.get("operatingCashflow")  # Yahoo info fallback
+
     capex = _get_last(cf, ["Capital Expenditures"])
+    # If CapEx missing, we still try Yahoo's direct freeCashflow
     fcf = None
     if ocf is not None and capex is not None:
-        fcf = float(ocf + capex)
+        try:
+            fcf = float(ocf + capex)
+        except Exception:
+            fcf = None
+    if fcf is None:
+        fcf = info.get("freeCashflow")  # Yahoo info fallback
 
     # Dividends / Yield
     dividend_yield = info.get("dividendYield")
@@ -133,21 +146,25 @@ def _collect_financials(ticker: str) -> dict:
         except Exception:
             pass
 
-    # Ratios
+    # Ratios / EV
     price_to_book = info.get("priceToBook")
     if price_to_book is None and mcap and equity and equity != 0:
         price_to_book = float(mcap / equity)
 
-    debt_to_equity = None
-    if total_debt is not None and equity not in (None, 0):
+    debt_to_equity = info.get("debtToEquity")
+    if debt_to_equity is None and total_debt is not None and equity not in (None, 0):
         debt_to_equity = float(total_debt / equity)
 
-    ev = None
-    if mcap is not None:
+    ev = info.get("enterpriseValue")
+    if ev is None and mcap is not None:
         ev = float(mcap + (total_debt or 0) - (cash or 0))
-    ev_to_ebitda = None
-    if ev is not None and ebitda not in (None, 0):
-        ev_to_ebitda = float(ev / ebitda)
+
+    ev_to_ebitda = info.get("enterpriseToEbitda")
+    if ev_to_ebitda is None and ev is not None and ebitda not in (None, 0):
+        try:
+            ev_to_ebitda = float(ev / ebitda)
+        except Exception:
+            ev_to_ebitda = None
 
     # Light sanity caps (avoid absurd numbers from info)
     def _cap(x, lo, hi):
@@ -159,8 +176,8 @@ def _collect_financials(ticker: str) -> dict:
         except Exception:
             return None
 
-    trailing_pe = _cap(info.get("trailingPE"), 0, 5000)
-    forward_pe  = _cap(info.get("forwardPE"), 0, 5000)
+    trailing_pe   = _cap(info.get("trailingPE"), 0, 5000)
+    forward_pe    = _cap(info.get("forwardPE"), 0, 5000)
     fifty_two_high = _cap(info.get("fiftyTwoWeekHigh"), 0, 1e6)
     fifty_two_low  = _cap(info.get("fiftyTwoWeekLow"), 0, 1e6)
 
@@ -173,10 +190,14 @@ def _collect_financials(ticker: str) -> dict:
         "forwardPE": forward_pe,
         "priceToBook": price_to_book,
         "debtToEquity": debt_to_equity,
-        "freeCashFlow": fcf,
+        # Expose components + FCF so agents can reason transparently
+        "operatingCashFlow": ocf,
+        "capitalExpenditures": capex,
+        "freeCashFlow": fcf,  # note: our output key uses 'F' capitalization for readability
         "dividendYield": dividend_yield,
         "fiftyTwoWeekHigh": fifty_two_high,
         "fiftyTwoWeekLow": fifty_two_low,
+        "EV": ev,
         "EV_EBITDA": ev_to_ebitda,
     }
 
