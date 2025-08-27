@@ -590,15 +590,48 @@ class AgenticLayer:
                 'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
                 'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A')
             })
-
+        #Old version - over-writes agent results
+        #results_df = pd.DataFrame(results)
+        # Safe sort (NaN if parsing fails)
+        #results_df['Agent_Rating'] = pd.to_numeric(results_df['Agent_Rating'], errors='coerce')
+        #results_df.sort_values(by="Agent_Rating", ascending=False, inplace=True)
+        #results_df.reset_index(drop=True, inplace=True)
+        #results_df.to_csv(config.AGENTIC_RESULTS_PATH, index=False)
+        #logging.info(f"Analysis complete. Saved to {config.AGENTIC_RESULTS_PATH}")
+        #New version - carry-forward snap-shot
         results_df = pd.DataFrame(results)
+
         # Safe sort (NaN if parsing fails)
         results_df['Agent_Rating'] = pd.to_numeric(results_df['Agent_Rating'], errors='coerce')
-        results_df.sort_values(by="Agent_Rating", ascending=False, inplace=True)
-        results_df.reset_index(drop=True, inplace=True)
 
-        results_df.to_csv(config.AGENTIC_RESULTS_PATH, index=False)
-        logging.info(f"Analysis complete. Saved to {config.AGENTIC_RESULTS_PATH}")
+        # === NEW: carry-forward snapshot ===
+        # prev_df was already read earlier; ensure consistent schema
+        if not prev_df.empty:
+            # Keep only the most recent row per ticker from the previous snapshot
+            prev_latest = prev_df.sort_values('Analysis_Date').drop_duplicates('Ticker', keep='last')
+
+            # Align columns across prev + new (union of columns)
+            all_cols = sorted(set(prev_latest.columns).union(results_df.columns))
+            prev_latest = prev_latest.reindex(columns=all_cols)
+            results_df  = results_df.reindex(columns=all_cols)
+
+            # Index by Ticker and update previous with today's rows (replace where present)
+            prev_latest = prev_latest.set_index('Ticker')
+            today_idxed = results_df.set_index('Ticker')
+            prev_latest.update(today_idxed)
+
+            snapshot_df = prev_latest.combine_first(today_idxed).reset_index()
+        else:
+            snapshot_df = results_df.copy()
+
+        # Final ordering: highest Agent_Rating first (fallback to Quant_Score if tie/NaN)
+        snapshot_df['Agent_Rating'] = pd.to_numeric(snapshot_df['Agent_Rating'], errors='coerce')
+        snapshot_df['Quant_Score']  = pd.to_numeric(snapshot_df['Quant_Score'], errors='coerce')
+        snapshot_df.sort_values(by=["Agent_Rating","Quant_Score"], ascending=[False, False], inplace=True)
+        snapshot_df.reset_index(drop=True, inplace=True)
+
+        snapshot_df.to_csv(config.AGENTIC_RESULTS_PATH, index=False)
+        logging.info(f"Analysis complete. Saved to {config.AGENTIC_RESULTS_PATH} (carry-forward snapshot)")
 
         _prune_local_cache()
 
