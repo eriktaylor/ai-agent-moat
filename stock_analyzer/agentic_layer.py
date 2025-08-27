@@ -583,11 +583,73 @@ class AgenticLayer:
             "investor.", "ir.", "cnbc.com","finance.yahoo.com","seekingalpha.com"  # keep SA as 'pro-ish' if you want
         )
         retail_domains = ("reddit.com","stocktwits.com","fool.com")
-        distinct_domains = set()
-        pro_hits = 0
-        retail_hits = 0
-        fulltext_hits = 0  # count of results where we fetched article body (not just snippet)
+        # --- collect all evidence first ---
         evidence_items = []
+        distinct_domains = set()
+        pro_hits = retail_hits = fulltext_hits = 0
+        
+        def _push_item(title, url, excerpt, category, body_present):
+            nonlocal pro_hits, retail_hits, fulltext_hits
+            dom = _domain(url).lower() if url else ""
+            if dom.startswith(("www.","m.")): dom = dom.split(".", 1)[1]
+            evidence_items.append({
+                "dom": dom, "title": title or "No Title", "excerpt": excerpt or "",
+                "category": category, "has_body": bool(body_present)
+            })
+            if dom:
+                distinct_domains.add(dom)
+                if any(d in dom for d in pro_domains): pro_hits += 1
+                elif any(d in dom for d in retail_domains): retail_hits += 1
+            if body_present: fulltext_hits += 1
+        
+        # Google buckets
+        for category, query in news_queries.items():
+            try:
+                num_results = 4 if category == "Professional & Financial Analysis" else 2
+                results = self._cached_search(query, num_results=num_results)
+                if results:
+                    bucket_coverage += 1
+                    for r in results:
+                        title  = (r.get("title") or "No Title")
+                        snippet = (r.get("snippet") or "")
+                        url    = r.get("link") or r.get("url") or ""
+        
+                        body = ""
+                        dom = _domain(url).lower() if url else ""
+                        if dom.startswith(("www.","m.")): dom = dom.split(".",1)[1]
+                        if url and HAVE_REQUESTS and HAVE_BS4 and not any(dom.endswith(sfx) for sfx in paywall_suffixes):
+                            body = _fetch_article_text(url)
+        
+                        excerpt = (body[:1200] if body else snippet[:400])
+                        # (Optional) strip dates – remove if you allow dates
+                        # excerpt = _re.sub(...)
+        
+                        _push_item(title, url, excerpt, category, bool(body))
+        
+                        # flags
+                        lower_blob = f"{title} {snippet} {excerpt}".lower()
+                        if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
+                        if any(p.search(lower_blob) for p in risk_patterns):     risk_flag = True
+            except Exception as e:
+                logging.error(f"News search error for {ticker} ({category}): {e}")
+        
+        # Yahoo Finance news (0 Google quota)
+        if ENABLE_YF_NEWS:
+            try:
+                yf_news = yf.Ticker(ticker).news or []
+            except Exception:
+                yf_news = []
+            for item in yf_news[:YF_NEWS_MAX]:
+                title = item.get("title") or "No Title"
+                url   = item.get("link") or ""
+                body  = _fetch_article_text(url) if url else ""
+                excerpt = (body[:1200] if body else "") or (item.get("summary") or "")[:400]
+                _push_item(title, url, excerpt, "Professional & Financial Analysis", bool(body))
+        
+                lower_blob = f"{title} {excerpt}".lower()
+                if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
+                if any(p.search(lower_blob) for p in risk_patterns):     risk_flag = True
+
     
         for category, query in news_queries.items():
             news_context += f"\n--- {category} ---\n"
