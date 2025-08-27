@@ -922,41 +922,39 @@ class AgenticLayer:
             reports = self._run_analyst_agent(ticker)
             judgment = self._run_ranking_judge_agent(reports, ticker)
 
-            # --- Confidence post-processing (observable caps/boosts) ---
+            # --- Confidence normalization (deterministic fallback) ---
             meta = reports.get("_meta", {}) if isinstance(reports, dict) else {}
-            evidence_count = int(meta.get("evidence_count", 0) or 0)
-            bucket_coverage = int(meta.get("bucket_coverage", 0) or 0)  # 0..4
-            risk_flag = bool(meta.get("risk_flag", False))
-
-            if "confidence" not in judgment or judgment["confidence"] is None:
-                pro_hits = int(meta.get("pro_hits", 0) or 0)
-                retail_hits = int(meta.get("retail_hits", 0) or 0)
-                distinct_domains = int(meta.get("distinct_domains", 0) or 0)
-                fulltext_hits = int(meta.get("fulltext_hits", 0) or 0)
-                missing_financials = int(meta.get("missing_financials", 0) or 0)
-
-                base_conf = 0.45
-                if pro_hits >= 2: base_conf += 0.10
-                if pro_hits >= 4: base_conf += 0.05
-                if distinct_domains >= 4: base_conf += 0.05
-                if distinct_domains <= 1: base_conf -= 0.05
-                if fulltext_hits >= 3: base_conf += 0.05
-                if bucket_coverage >= 3 and evidence_count >= 8: base_conf += 0.05
-                if retail_hits > 2 * max(pro_hits, 1): base_conf -= 0.10
-                if missing_financials >= 3: base_conf -= 0.10
-                if risk_flag: base_conf -= 0.15
+            evidence_count   = int(meta.get("evidence_count", 0) or 0)
+            bucket_coverage  = int(meta.get("bucket_coverage", 0) or 0)
+            risk_flag        = bool(meta.get("risk_flag", False))
+            
+            if judgment.get("confidence") is None:
+                pro_hits          = int(meta.get("pro_hits", 0) or 0)
+                retail_hits       = int(meta.get("retail_hits", 0) or 0)
+                distinct_domains  = int(meta.get("distinct_domains", 0) or 0)
+                fulltext_hits     = int(meta.get("fulltext_hits", 0) or 0)
+                missing_financials= int(meta.get("missing_financials", 0) or 0)
+            
+                conf = 0.45
+                if pro_hits >= 2: conf += 0.10
+                if pro_hits >= 4: conf += 0.05
+                if distinct_domains >= 4: conf += 0.05
+                if distinct_domains <= 1: conf -= 0.05
+                if fulltext_hits >= 3: conf += 0.05
+                if bucket_coverage == 3 and evidence_count >= 6: conf += 0.05
+                if retail_hits > 2 * max(pro_hits, 1): conf -= 0.10
+                if missing_financials >= 3: conf -= 0.10
+                if risk_flag: conf -= 0.15
             else:
-                base_conf = float(judgment.get("confidence", 0.5) or 0.5)
-
-            # Caps/boosts
+                conf = float(judgment["confidence"])
+            
+            # Apply caps LAST so they can't be undone
             if bucket_coverage <= 1:
-                base_conf = min(base_conf, 0.60)
+                conf = min(conf, 0.60)
             if risk_flag:
-                base_conf = min(base_conf, 0.50)
-            if bucket_coverage >= 3 and evidence_count >= 8:
-                base_conf = min(base_conf + 0.05, 1.0)
-
-            judgment["confidence"] = max(0.0, min(1.0, base_conf))
+                conf = min(conf, 0.50)
+            
+            judgment["confidence"] = max(0.0, min(1.0, conf))
 
             # Pull quant score if present
             qser = quant_df.loc[quant_df['Ticker'].str.upper() == ticker, 'Quant_Score']
