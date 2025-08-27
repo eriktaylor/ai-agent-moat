@@ -190,7 +190,7 @@ class AgenticLayer:
         # Otherwise hit the API and refresh cache
         results = self.search_wrapper.results(query, num_results=num_results)
         _save_cache(path, query, num_results, results)
-    return results
+        return results
 
     # ------------------------
     # Ticker validation
@@ -329,9 +329,13 @@ class AgenticLayer:
         bucket_coverage = 0
         earnings_recent_flag = False
         risk_flag = False
+        #Old version
+        #risk_keywords = ("lawsuit", "investigation", "recall", "probe", "SEC", "short seller", "fraud")
+        #earnings_keywords = ("earnings", "EPS", "guidance", "quarterly results", "Q1", "Q2", "Q3", "Q4")
+        #New -> Lower cased all keywords
+        risk_keywords = ("lawsuit", "investigation", "recall", "probe", "sec", "short seller", "fraud")
+        earnings_keywords = ("earnings", "eps", "guidance", "quarterly results", "q1", "q2", "q3", "q4")
 
-        risk_keywords = ("lawsuit", "investigation", "recall", "probe", "SEC", "short seller", "fraud")
-        earnings_keywords = ("earnings", "EPS", "guidance", "quarterly results", "Q1", "Q2", "Q3", "Q4")
 
         for category, query in news_queries.items():
             news_context += f"\n--- {category} ---\n"
@@ -474,6 +478,7 @@ class AgenticLayer:
     # ------------------------
     def run_analysis(self):
         logging.info("Starting Agentic Analysis Layer...")
+        today = pd.Timestamp(datetime.now()).normalize()
 
         try:
             quant_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
@@ -531,9 +536,9 @@ class AgenticLayer:
             quant_df['Quant_Delta'] = 0.0
 
         # Normalize the parts
-        qn = _min_max_norm(quant_df['Quant_Score'])
-        stale_n = _min_max_norm(quant_df['Days_Since_Agentic'])
-        qdelta_n = _min_max_norm(quant_df['Quant_Delta'])
+        qn = self._min_max_norm(quant_df['Quant_Score'])
+        stale_n = self._min_max_norm(quant_df['Days_Since_Agentic'])
+        qdelta_n = self._min_max_norm(quant_df['Quant_Delta'])
 
         # Earnings boost seed (0 now; we'll add per-ticker after analyst pass if needed)
         quant_df['Earnings_Boost'] = 0.0
@@ -549,7 +554,6 @@ class AgenticLayer:
         tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
         logging.info(f"Analyzing {len(tickers_to_analyze)} unique tickers: {tickers_to_analyze}")
 
-        today = pd.Timestamp(datetime.now()).normalize()
         results = []
 
         for ticker in tickers_to_analyze:
