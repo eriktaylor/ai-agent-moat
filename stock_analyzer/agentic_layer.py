@@ -342,13 +342,16 @@ class AgenticLayer:
         logging.info("Running Scout Agent to find new tickers...")
         new_tickers = set()
 
+        this_year = datetime.utcnow().year
+        last_year = this_year - 1
+
         # Bias queries toward recent years to keep results fresh.
         queries = [
-            "top performing small cap stocks 2024 OR 2025",
-            "undervalued growth stocks outside S&P 500 2024 OR 2025",
-            "recent technological breakthrough company stock 2024 OR 2025"
+            f"top performing small cap stocks {last_year} OR {this_year}",
+            f"undervalued growth stocks outside S&P 500 {last_year} OR {this_year}",
+            f"recent technological breakthrough company stock {last_year} OR {this_year}",
         ]
-
+        
         for query in queries:
             if len(new_tickers) >= getattr(config, "MAX_SCOUT_RESULTS", 10):
                 logging.info("Scout limit reached. Halting search.")
@@ -420,13 +423,15 @@ class AgenticLayer:
         }
 
         # Fresh news: bias toward recent years; keep site: filters plain
+        this_year = datetime.utcnow().year
+        last_year = this_year - 1
         news_queries = {
             "Professional & Financial Analysis":
-                f'"{company_name}" ({ticker}) stock analysis 2024 OR 2025 site:reuters.com OR site:bloomberg.com OR site:wsj.com',
+                f'"{company_name}" ({ticker}) stock analysis {last_year} OR {this_year} site:reuters.com OR site:bloomberg.com OR site:wsj.com',
             "Retail & Social Sentiment":
-                f'"{company_name}" ({ticker}) stock sentiment 2024 OR 2025 site:reddit.com OR site:fool.com OR site:seekingalpha.com',
+                f'"{company_name}" ({ticker}) stock sentiment {last_year} OR {this_year} site:reddit.com OR site:fool.com OR site:seekingalpha.com',
             "Risk Factors & Negative News":
-                f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest 2024 OR 2025'
+                f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest {last_year} OR {this_year}',
         }
 
         # Evidence/meta
@@ -471,8 +476,11 @@ class AgenticLayer:
                         title = (r.get("title") or "No Title")
                         snippet = (r.get("snippet") or "")
                         url = r.get("link") or r.get("url") or ""
-                        dom = _domain(url) if url else "n/a"
-
+                        #dom = _domain(url) if url else "n/a"
+                        dom = _domain(url).lower() if url else ""
+                        if dom.startswith(("www.","m.")):
+                            dom = dom.split(".", 1)[1]
+                            
                         # Fetch article body if possible (cached); fallback to snippet
                         body = ""
                         if url and HAVE_REQUESTS and HAVE_BS4 and not any(dom.endswith(sfx) for sfx in paywall_suffixes):
@@ -483,7 +491,8 @@ class AgenticLayer:
                         excerpt = _re.sub(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\.? \d{1,2}, \d{4}\b", "", excerpt, flags=_re.I)
                         excerpt = _re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", excerpt)
 
-                        news_context += f"**{title}** ({dom}): {excerpt}\n"
+                        #news_context += f"**{title}** ({dom}): {excerpt}\n"
+                        news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
 
                         # NEW: tally quality & diversity
                         if dom:
@@ -751,12 +760,22 @@ class AgenticLayer:
 
             # Deterministic fallback if model omitted confidence
             if "confidence" not in judgment or judgment["confidence"] is None:
-                base_conf = 0.50 \
-                            + (0.10 if bucket_coverage >= 2 else 0.0) \
-                            + (0.05 if bucket_coverage == 3 else 0.0) \
-                            + (0.05 if evidence_count >= 4 else 0.0) \
-                            + (0.05 if evidence_count >= 6 else 0.0) \
-                            - (0.15 if risk_flag else 0.0)
+                pro_hits = int(meta.get("pro_hits", 0) or 0)
+                retail_hits = int(meta.get("retail_hits", 0) or 0)
+                distinct_domains = int(meta.get("distinct_domains", 0) or 0)
+                fulltext_hits = int(meta.get("fulltext_hits", 0) or 0)
+                missing_financials = int(meta.get("missing_financials", 0) or 0)
+            
+                base_conf = 0.45
+                if pro_hits >= 2: base_conf += 0.10
+                if pro_hits >= 4: base_conf += 0.05
+                if distinct_domains >= 4: base_conf += 0.05
+                if distinct_domains <= 1: base_conf -= 0.05
+                if fulltext_hits >= 3: base_conf += 0.05
+                if bucket_coverage == 3 and evidence_count >= 6: base_conf += 0.05
+                if retail_hits > 2 * max(pro_hits, 1): base_conf -= 0.10
+                if missing_financials >= 3: base_conf -= 0.10
+                if risk_flag: base_conf -= 0.15
             else:
                 base_conf = float(judgment.get("confidence", 0.5) or 0.5)
 
