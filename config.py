@@ -36,6 +36,9 @@ QUANT_DEEP_DIVE_CANDIDATES = 3
 ENABLE_SCOUT = False
 # The maximum number of new tickers for the scout agent to propose.
 MAX_SCOUT_RESULTS = 3
+#ALso use Yahoo finance news to bolster reports.
+ENABLE_YF_NEWS = True
+YF_NEWS_MAX = 12
 
 # --- Portfolio Management Parameters ---
 MAX_PORTFOLIO_SIZE = 10
