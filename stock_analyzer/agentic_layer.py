@@ -118,7 +118,7 @@ def _safe_json_loads(s: str):
     except Exception:
         return None
 
-def _normalize_judgment(j: dict) -> dict:
+def _normalize_judgment(j: dict) -> dict:    
     """Enforce consistency between rating and recommendation."""
     try:
         rating = float(j.get("rating", 0.0))
@@ -131,8 +131,26 @@ def _normalize_judgment(j: dict) -> dict:
         rec = "Sell"
     else:
         rec = "Hold" if rec not in {"Hold", "Neutral"} else rec
+
+    """
+    #OLD VERSION
     j["rating"] = rating
     j["recommendation"] = rec
+    j["justification"] = j.get("justification", "")[:1000]  # keep CSV tidy
+    return j
+    """
+
+    # NEW: confidence normalization
+    try:
+        conf = float(j.get("confidence", 0.5))
+    except Exception:
+        conf = 0.5
+    # hard clip to [0,1]
+    conf = max(0.0, min(1.0, conf))
+
+    j["rating"] = rating
+    j["recommendation"] = rec
+    j["confidence"] = conf
     j["justification"] = j.get("justification", "")[:1000]  # keep CSV tidy
     return j
 
@@ -287,6 +305,7 @@ class AgenticLayer:
                 f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest 2024 OR 2025'
         }
 
+        """
         news_context = ""
         for category, query in news_queries.items():
             news_context += f"\n--- {category} ---\n"
@@ -303,7 +322,41 @@ class AgenticLayer:
             except Exception as e:
                 logging.error(f"News search error for {ticker} ({category}): {e}")
                 news_context += "Error fetching news.\n"
+        """
+        #NEW VERSION        
+        news_context = ""
+        evidence_count = 0
+        bucket_coverage = 0
+        earnings_recent_flag = False
+        risk_flag = False
 
+        risk_keywords = ("lawsuit", "investigation", "recall", "probe", "SEC", "short seller", "fraud")
+        earnings_keywords = ("earnings", "EPS", "guidance", "quarterly results", "Q1", "Q2", "Q3", "Q4")
+
+        for category, query in news_queries.items():
+            news_context += f"\n--- {category} ---\n"
+            try:
+                num_results = 4 if category == "Professional & Financial Analysis" else 2
+                results = self._cached_search(query, num_results=num_results)
+                if results:
+                    bucket_coverage += 1
+                    for r in results:
+                        title = r.get("title", "No Title") or "No Title"
+                        snippet = r.get("snippet", "") or ""
+                        news_context += f"**{title}**: {snippet}\n"
+                        evidence_count += 1
+                        lower_blob = f"{title} {snippet}".lower()
+                        if any(k in lower_blob for k in earnings_keywords):
+                            earnings_recent_flag = True
+                        if any(k in lower_blob for k in risk_keywords):
+                            risk_flag = True
+                else:
+                    news_context += "No recent results found.\n"
+            except Exception as e:
+                logging.error(f"News search error for {ticker} ({category}): {e}")
+                news_context += "Error fetching news.\n"
+
+        # ... persona generation as before ...
         # Persona analysis with hallucination guardrails
         personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
         system_prompt = (
@@ -335,7 +388,19 @@ class AgenticLayer:
                 logging.error(f"Persona analysis error for {ticker} ({persona}): {e}")
                 reports[persona] = "Analysis failed."
 
+        #Old version
+        #self.analysis_cache[ticker] = reports
+        #return reports
+
+        #NEW VERSION
         self.analysis_cache[ticker] = reports
+        # attach observable metadata the judge/scheduler can use
+        reports["_meta"] = {
+            "evidence_count": evidence_count,
+            "bucket_coverage": bucket_coverage,       # 0..3
+            "earnings_recent_flag": earnings_recent_flag,
+            "risk_flag": risk_flag,
+        }
         return reports
 
     # ------------------------
@@ -350,6 +415,7 @@ class AgenticLayer:
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Missing persona analysis."}
 
         # No raw braces in the template to avoid LangChain variable parsing issues
+        """
         system_prompt = (
             "You are a senior portfolio manager. Based on the three analyst reports, output ONLY a valid JSON object "
             'with keys: "rating" (float 0.0-1.0), "recommendation" ("Buy"|"Sell"|"Hold"|"Neutral"), '
@@ -358,6 +424,23 @@ class AgenticLayer:
             "Value Investor report:\n{value_report}\n\n"
             "Devil's Advocate report:\n{devils_report}"
         )
+        """
+        #NEW VERSION
+        system_prompt = (
+            "You are a senior portfolio manager. Based on the three analyst reports, output ONLY a valid JSON object "
+            'with keys: "rating" (float 0.0-1.0), "recommendation" ("Buy"|"Sell"|"Hold"|"Neutral"), '
+            '"confidence" (float 0.0-1.0), and "justification" (string). '
+            "Rules for confidence:\n"
+            "• Start from your internal certainty, but:\n"
+            "  - If only one or zero distinct news sources are cited, cap confidence at 0.60.\n"
+            "  - If any analyst flags a major risk, cap at 0.50.\n"
+            "  - If all three analysts broadly agree, you may raise up to 0.85.\n"
+            "Return JSON only, with no extra text.\n\n"
+            "Market Investor report:\n{market_report}\n\n"
+            "Value Investor report:\n{value_report}\n\n"
+            "Devil's Advocate report:\n{devils_report}"
+        )
+        ##END NEW VERSION
 
         try:
             response = (ChatPromptTemplate.from_template(system_prompt) | self.llm).invoke({
@@ -374,6 +457,18 @@ class AgenticLayer:
             logging.error(f"Judge agent error for {ticker}: {e}")
             return {"rating": 0.0, "recommendation": "Neutral", "justification": "Failed to parse decision."}
 
+
+    def _min_max_norm(self, s):
+        try:
+            s = pd.to_numeric(s, errors="coerce")
+            lo, hi = s.min(), s.max()
+            if pd.isna(lo) or pd.isna(hi) or hi == lo:
+                return pd.Series([0.0] * len(s), index=s.index)
+            return (s - lo) / (hi - lo)
+        except Exception:
+            return pd.Series([0.0] * len(s), index=s.index)
+
+    
     # ------------------------
     # Main pipeline
     # ------------------------
@@ -396,12 +491,59 @@ class AgenticLayer:
             prev_df = pd.DataFrame()
 
         # Scout for new names (validated)
-        new_tickers = self._run_scout_agent(known_tickers)
-
+        #new_tickers = self._run_scout_agent(known_tickers)
+        
         # Take top quant names
+        #OLD VERSION
+        #top_n = getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10)
+        #top_quant_candidates = [ _canonical_upper(t) for t in quant_df.head(top_n)['Ticker'].astype(str).tolist() ]
+        #NEW VERSION
+                # --- Priority selection: quant score + staleness + novelty + quant-delta + earnings boost ---
         top_n = getattr(config, "QUANT_DEEP_DIVE_CANDIDATES", 10)
-        top_quant_candidates = [ _canonical_upper(t) for t in quant_df.head(top_n)['Ticker'].astype(str).tolist() ]
 
+        # Build last analysis date and last quant score per ticker from prev_df (if available)
+        last_dates_dict = {}
+        last_quant_dict = {}
+        if not prev_df.empty:
+            prev_sorted = prev_df.sort_values(by='Analysis_Date', ascending=False)
+            last_dates_dict = prev_sorted.drop_duplicates('Ticker').set_index('Ticker')['Analysis_Date'].to_dict()
+            if 'Quant_Score' in prev_sorted.columns:
+                last_quant_dict = prev_sorted.drop_duplicates('Ticker').set_index('Ticker')['Quant_Score'].to_dict()
+
+        quant_df['Ticker'] = quant_df['Ticker'].astype(str).str.upper()
+
+        # Staleness (days since last agentic)
+        quant_df['Last_Agentic'] = quant_df['Ticker'].map(last_dates_dict)
+        quant_df['Days_Since_Agentic'] = (today - pd.to_datetime(quant_df['Last_Agentic'])).dt.days
+        quant_df['Days_Since_Agentic'] = quant_df['Days_Since_Agentic'].fillna(999)  # never analyzed -> very stale
+
+        # Novelty flag: never analyzed before
+        quant_df['Novelty_Flag'] = quant_df['Last_Agentic'].isna().astype(int)
+
+        # Quant-score delta vs last run (absolute change)
+        if 'Quant_Score' in quant_df.columns:
+            quant_df['Prev_Quant'] = quant_df['Ticker'].map(last_quant_dict)
+            quant_df['Quant_Delta'] = (quant_df['Quant_Score'] - quant_df['Prev_Quant']).abs()
+            quant_df['Quant_Delta'] = quant_df['Quant_Delta'].fillna(0.0)
+        else:
+            quant_df['Quant_Score'] = 0.0
+            quant_df['Quant_Delta'] = 0.0
+
+        # Normalize the parts
+        qn = _min_max_norm(quant_df['Quant_Score'])
+        stale_n = _min_max_norm(quant_df['Days_Since_Agentic'])
+        qdelta_n = _min_max_norm(quant_df['Quant_Delta'])
+
+        # Earnings boost seed (0 now; we'll add per-ticker after analyst pass if needed)
+        quant_df['Earnings_Boost'] = 0.0
+
+        # Priority = 0.6*quant + 0.3*staleness + 0.1*novelty + 0.05*quant_delta + 0.05*earnings_boost
+        quant_df['Priority'] = 0.6*qn + 0.3*stale_n + 0.1*quant_df['Novelty_Flag'] + 0.05*qdelta_n + 0.05*quant_df['Earnings_Boost']
+
+        # Pick top-N by priority
+        top_quant_candidates = quant_df.sort_values('Priority', ascending=False).head(top_n)['Ticker'].tolist()
+        #END NEW VERSION
+        
         # Deduplicate while preserving order
         tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
         logging.info(f"Analyzing {len(tickers_to_analyze)} unique tickers: {tickers_to_analyze}")
@@ -433,6 +575,7 @@ class AgenticLayer:
                 'Analysis_Date': today.strftime('%Y-%m-%d'),
                 'Agent_Rating': judgment.get('rating'),
                 'Agent_Recommendation': judgment.get('recommendation'),
+                'Agent_Confidence': judgment.get('confidence'),  # <-- NEW
                 'Justification': judgment.get('justification'),
                 'Market_Investor_Analysis': reports.get('Market Investor', 'N/A'),
                 'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
