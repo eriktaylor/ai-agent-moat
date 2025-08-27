@@ -497,7 +497,10 @@ class AgenticLayer:
         
         # Scout for new names (validated)
         #new_tickers = self._run_scout_agent(known_tickers)
-        new_tickers = []
+        #new_tickers = []
+        # Option B: feature flag
+        ENABLE_SCOUT = getattr(config, "ENABLE_SCOUT", False)
+        new_tickers = self._run_scout_agent(known_tickers) if ENABLE_SCOUT else []
 
         # Take top quant names
         #OLD VERSION
@@ -551,7 +554,8 @@ class AgenticLayer:
         #END NEW VERSION
         
         # Deduplicate while preserving order
-        tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
+        #tickers_to_analyze = list(dict.fromkeys(top_quant_candidates + new_tickers))
+        tickers_to_analyze = list(dict.fromkeys([*top_quant_candidates, *new_tickers])) #NEW -> use unpacking operator
         logging.info(f"Analyzing {len(tickers_to_analyze)} unique tickers: {tickers_to_analyze}")
 
         results = []
