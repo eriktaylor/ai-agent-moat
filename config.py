@@ -27,7 +27,7 @@ YFINANCE_PERIOD = "3y"
 TARGET_QUANTILE = 0.8
 TARGET_FORWARD_PERIOD = 21
 EVAL_SPLIT_MONTHS = 6
-TOP_N_CANDIDATES = 20
+TOP_N_CANDIDATES = 250
 
 # --- Agentic Layer Parameters ---
 # The number of top-ranked candidates from the quantitative model to pass to the agentic layer.
