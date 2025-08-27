@@ -34,8 +34,8 @@ SINGLE_LETTER_WHITELIST = {"F", "T", "C"}  # add if desired
 
 VALID_US_EXCHANGES = {"NMS", "NYQ", "NCM", "NGM", "BATS", "ASE", "PCX"}  # Nasdaq/NYSE family
 
-SEARCH_CACHE_DIR = getattr(config, "SEARCH_CACHE_DIR", "data/search_cache")
-os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
+#SEARCH_CACHE_DIR = getattr(config, "SEARCH_CACHE_DIR", "data/search_cache")
+#os.makedirs(SEARCH_CACHE_DIR, exist_ok=True)
 
 # --- add near top of agentic_layer.py ---
 import hashlib
