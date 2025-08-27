@@ -36,6 +36,7 @@ VALID_US_EXCHANGES = {"NMS", "NYQ", "NCM", "NGM", "BATS", "ASE", "PCX"}  # Nasda
 
 import hashlib
 from pathlib import Path
+from urllib.parse import urlparse
 
 CACHE_VERSION = "v1"
 
@@ -78,6 +79,7 @@ def _get_last(df, rows):
         pass
     return None
 
+
 def _collect_financials(ticker: str) -> dict:
     tk = yf.Ticker(ticker)
     info = tk.info or {}
@@ -101,8 +103,8 @@ def _collect_financials(ticker: str) -> dict:
     price = fast.get("last_price") or info.get("regularMarketPrice")
 
     total_debt = _get_last(bs, [
-        "Total Debt", "Short Long Term Debt", "Short/Long Term Debt", "Long Term Debt And Capital Lease Obligation",
-        "Total Debt Net"
+        "Total Debt", "Short Long Term Debt", "Short/Long Term Debt",
+        "Long Term Debt And Capital Lease Obligation", "Total Debt Net"
     ])
     equity = _get_last(bs, [
         "Total Stockholder Equity", "Total Equity Gross Minority Interest", "Total Equity"
@@ -180,7 +182,6 @@ def _collect_financials(ticker: str) -> dict:
 
 
 def _cache_filename(query: str, bucket: int) -> str:
-    # stable readable prefix + short digest to avoid collisions
     key = re.sub(r"[^a-zA-Z0-9]+", "_", query)[:100]
     digest = hashlib.sha1(query.encode("utf-8")).hexdigest()[:8]
     return f"{key}_{bucket}_{digest}.json"
@@ -221,7 +222,6 @@ def _is_stale(meta: dict, ttl_days: int) -> bool:
         age = pd.Timestamp.utcnow() - created
         return age > pd.Timedelta(days=ttl_days)
     except Exception:
-        # If we can't read metadata, treat as stale
         return True
 
 
@@ -388,8 +388,6 @@ def _canonical_upper(s: str) -> str:
     return (s or "").strip().upper()
 
 
-# Optional: tiny helper for readable domain labels
-from urllib.parse import urlparse
 def _domain(url: str) -> str:
     try:
         return urlparse(url).netloc
@@ -467,7 +465,7 @@ class AgenticLayer:
             f"undervalued growth stocks outside S&P 500 {last_year} OR {this_year}",
             f"recent technological breakthrough company stock {last_year} OR {this_year}",
         ]
-        
+
         for query in queries:
             if len(new_tickers) >= getattr(config, "MAX_SCOUT_RESULTS", 10):
                 logging.info("Scout limit reached. Halting search.")
@@ -522,43 +520,41 @@ class AgenticLayer:
 
         logging.info(f"Running Analyst Agent on {ticker}")
         try:
-            stock_info = yf.Ticker(ticker).info or {}
+            _ = yf.Ticker(ticker).info or {}
         except Exception as e:
             logging.error(f"Yahoo Finance API error for {ticker}: {e}")
             return {"error": str(e)}
 
-        """
-        #Old method of collecting financial data
-        company_name = stock_info.get("longName", ticker)
-        financial_data = {
-            "longName": company_name,
-            "sector": stock_info.get("sector", "N/A"),
-            "trailingPE": stock_info.get("trailingPE", "N/A"),
-            "forwardPE": stock_info.get("forwardPE", "N/A"),
-            "marketCap": stock_info.get("marketCap", "N/A"),
-            "fiftyTwoWeekHigh": stock_info.get("fiftyTwoWeekHigh", "N/A"),
-            "fiftyTwoWeekLow": stock_info.get("fiftyTwoWeekLow", "N/A"),
-        }
-        """
-        # NEW: Drop in method
+        # Collect richer financials
         financial_data = _collect_financials(ticker)
         company_name = financial_data.get("longName", ticker)
 
-
-        # Fresh news: bias toward recent years; keep site: filters plain
+        # News buckets (diverse sources)
         this_year = datetime.utcnow().year
         last_year = this_year - 1
         news_queries = {
+            # Pro outlets
             "Professional & Financial Analysis":
-                f'"{company_name}" ({ticker}) stock analysis {last_year} OR {this_year} site:reuters.com OR site:bloomberg.com OR site:wsj.com',
+                f'"{company_name}" ({ticker}) stock analysis {last_year} OR {this_year} '
+                f'site:reuters.com OR site:bloomberg.com OR site:wsj.com OR site:ft.com OR site:cnbc.com',
+            # Aggregators (Google News + Yahoo News)
+            "General Headlines":
+                f'"{company_name}" ({ticker}) {last_year} OR {this_year} '
+                f'site:news.google.com OR site:news.yahoo.com OR site:finance.yahoo.com',
+            # Retail/social
             "Retail & Social Sentiment":
-                f'"{company_name}" ({ticker}) stock sentiment {last_year} OR {this_year} site:reddit.com OR site:fool.com OR site:seekingalpha.com',
+                f'"{company_name}" ({ticker}) stock sentiment {last_year} OR {this_year} '
+                f'site:reddit.com OR site:fool.com OR site:seekingalpha.com',
+            # Risks
             "Risk Factors & Negative News":
-                f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest {last_year} OR {this_year}',
+                f'"{company_name}" ({ticker}) risk OR lawsuit OR investigation OR recall OR safety OR short interest '
+                f'{last_year} OR {this_year}',
         }
 
         # Evidence/meta
-        news_context = ""
+        evidence_items = []
+        distinct_domains = set()
+        pro_hits = retail_hits = fulltext_hits = 0
         evidence_count = 0
         bucket_coverage = 0
         earnings_recent_flag = False
@@ -574,66 +570,64 @@ class AgenticLayer:
             r"\bearnings\b", r"\beps\b", r"\bguidance\b", r"\bquarterly results\b", r"\bq[1-4]\b"
         )]
 
-        # domains that are frequently paywalled or heavy; we still keep titles/snippets if body can't be fetched
+        # paywall note: keep titles/snippets if body can't be fetched
         paywall_suffixes = ("wsj.com", "bloomberg.com")
 
-        # NEW: source quality/diversity counters
         pro_domains = (
             "reuters.com","ft.com","wsj.com","bloomberg.com","sec.gov",
-            "investor.", "ir.", "cnbc.com","finance.yahoo.com","seekingalpha.com"  # keep SA as 'pro-ish' if you want
+            "investor.", "ir.", "cnbc.com","finance.yahoo.com"
         )
-        retail_domains = ("reddit.com","stocktwits.com","fool.com")
-        # --- collect all evidence first ---
-        evidence_items = []
-        distinct_domains = set()
-        pro_hits = retail_hits = fulltext_hits = 0
-        
+        retail_domains = ("reddit.com","stocktwits.com","fool.com","seekingalpha.com")
+
+        def _norm_domain(u: str) -> str:
+            d = _domain(u).lower() if u else ""
+            if d.startswith(("www.", "m.")):
+                d = d.split(".", 1)[1]
+            return d
+
         def _push_item(title, url, excerpt, category, body_present):
-            nonlocal pro_hits, retail_hits, fulltext_hits
-            dom = _domain(url).lower() if url else ""
-            if dom.startswith(("www.","m.")): dom = dom.split(".", 1)[1]
+            nonlocal pro_hits, retail_hits, fulltext_hits, evidence_count
+            dom = _norm_domain(url)
             evidence_items.append({
-                "dom": dom, "title": title or "No Title", "excerpt": excerpt or "",
-                "category": category, "has_body": bool(body_present)
+                "dom": dom, "title": title or "No Title", "excerpt": (excerpt or "").strip(),
+                "category": category, "has_body": bool(body_present),
             })
             if dom:
                 distinct_domains.add(dom)
                 if any(d in dom for d in pro_domains): pro_hits += 1
                 elif any(d in dom for d in retail_domains): retail_hits += 1
             if body_present: fulltext_hits += 1
-        
-        # Google buckets
+            evidence_count += 1
+
+        # 1) Google buckets
         for category, query in news_queries.items():
             try:
-                num_results = 4 if category == "Professional & Financial Analysis" else 2
+                num_results = 5 if category in ("Professional & Financial Analysis", "General Headlines") else 4
                 results = self._cached_search(query, num_results=num_results)
                 if results:
                     bucket_coverage += 1
                     for r in results:
-                        title  = (r.get("title") or "No Title")
+                        title   = (r.get("title") or "No Title")
                         snippet = (r.get("snippet") or "")
-                        url    = r.get("link") or r.get("url") or ""
-        
+                        url     = r.get("link") or r.get("url") or ""
+                        dom     = _norm_domain(url)
+
                         body = ""
-                        dom = _domain(url).lower() if url else ""
-                        if dom.startswith(("www.","m.")): dom = dom.split(".",1)[1]
                         if url and HAVE_REQUESTS and HAVE_BS4 and not any(dom.endswith(sfx) for sfx in paywall_suffixes):
                             body = _fetch_article_text(url)
-        
-                        excerpt = (body[:1200] if body else snippet[:400])
-                        # (Optional) strip dates – remove if you allow dates
-                        # excerpt = _re.sub(...)
-        
+
+                        excerpt = (body[:1200] if body else snippet[:500])
                         _push_item(title, url, excerpt, category, bool(body))
-        
-                        # flags
+
                         lower_blob = f"{title} {snippet} {excerpt}".lower()
                         if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
                         if any(p.search(lower_blob) for p in risk_patterns):     risk_flag = True
             except Exception as e:
                 logging.error(f"News search error for {ticker} ({category}): {e}")
-        
-        # Yahoo Finance news (0 Google quota)
+
+        # 2) Yahoo Finance news (0 Google quota)
+        ENABLE_YF_NEWS = getattr(config, "ENABLE_YF_NEWS", True)
+        YF_NEWS_MAX = getattr(config, "YF_NEWS_MAX", 12)
         if ENABLE_YF_NEWS:
             try:
                 yf_news = yf.Ticker(ticker).news or []
@@ -643,147 +637,56 @@ class AgenticLayer:
                 title = item.get("title") or "No Title"
                 url   = item.get("link") or ""
                 body  = _fetch_article_text(url) if url else ""
-                excerpt = (body[:1200] if body else "") or (item.get("summary") or "")[:400]
-                _push_item(title, url, excerpt, "Professional & Financial Analysis", bool(body))
-        
+                excerpt = (body[:1200] if body else "") or (item.get("summary") or "")[:500]
+                _push_item(title, url, excerpt, "General Headlines", bool(body))
+
                 lower_blob = f"{title} {excerpt}".lower()
                 if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
                 if any(p.search(lower_blob) for p in risk_patterns):     risk_flag = True
 
-    
-        for category, query in news_queries.items():
-            news_context += f"\n--- {category} ---\n"
-            try:
-                num_results = 4 if category == "Professional & Financial Analysis" else 2
-                results = self._cached_search(query, num_results=num_results)
-                if results:
-                    bucket_coverage += 1
-                    for r in results:
-                        title = (r.get("title") or "No Title")
-                        snippet = (r.get("snippet") or "")
-                        url = r.get("link") or r.get("url") or ""
-                        #dom = _domain(url) if url else "n/a"
-                        dom = _domain(url).lower() if url else ""
-                        if dom.startswith(("www.","m.")):
-                            dom = dom.split(".", 1)[1]
-                            
-                        # Fetch article body if possible (cached); fallback to snippet
-                        body = ""
-                        if url and HAVE_REQUESTS and HAVE_BS4 and not any(dom.endswith(sfx) for sfx in paywall_suffixes):
-                            body = _fetch_article_text(url)
+        # Select a diversified subset for prompting
+        EVIDENCE_BUDGET = getattr(config, "EVIDENCE_BUDGET", 18)
+        PER_DOMAIN_CAP = getattr(config, "PER_DOMAIN_CAP", 3)
+        pro_like = ("reuters.com","ft.com","wsj.com","bloomberg.com","sec.gov","cnbc.com","finance.yahoo.com","investor.","ir.")
 
-                        excerpt = body[:1200] if body else snippet[:400]
-                        # scrub explicit dates to avoid the model quoting them
-                        excerpt = _re.sub(r"\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)\.? \d{1,2}, \d{4}\b", "", excerpt, flags=_re.I)
-                        excerpt = _re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", excerpt)
+        def _score(it):
+            s = 0
+            if it["has_body"]: s += 2
+            if any(d in (it["dom"] or "") for d in pro_like): s += 1
+            return (s, it["dom"] or "", it["title"] or "")
 
-                                evidence_items.append({
-                            "dom": dom,
-                            "title": title,
-                            "excerpt": excerpt,
-                            "category": category,
-                            "has_body": bool(body),
-                        })
+        selected = []
+        per_dom = {}
+        for it in sorted(evidence_items, key=_score, reverse=True):
+            dom = it["dom"] or ""
+            if per_dom.get(dom, 0) >= PER_DOMAIN_CAP:
+                continue
+            selected.append(it)
+            per_dom[dom] = per_dom.get(dom, 0) + 1
+            if len(selected) >= EVIDENCE_BUDGET:
+                break
 
-                        EVIDENCE_BUDGET = getattr(config, "EVIDENCE_BUDGET", 14)
-                        PER_DOMAIN_CAP = getattr(config, "PER_DOMAIN_CAP", 2)
-                        
-                        # Prefer full-text + pro domains, then fill diversity
-                        pro_like = tuple(["reuters.com","ft.com","wsj.com","bloomberg.com","sec.gov","cnbc.com","finance.yahoo.com","investor.","ir."])
-                        def _score(it):
-                            s = 0
-                            if it["has_body"]: s += 2
-                            if any(d in (it["dom"] or "") for d in pro_like): s += 1
-                            return (s, it["dom"] or "", it["title"] or "")
-                        
-                        selected = []
-                        per_dom = {}
-                        for it in sorted(evidence_items, key=_score, reverse=True):
-                            dom = it["dom"] or ""
-                            if per_dom.get(dom, 0) >= PER_DOMAIN_CAP:
-                                continue
-                            selected.append(it)
-                            per_dom[dom] = per_dom.get(dom, 0) + 1
-                            if len(selected) >= EVIDENCE_BUDGET:
-                                break
-                        
-                        # Build the actual persona context from `selected`
-                        news_context = ""
-                        for category in ["Professional & Financial Analysis", "Retail & Social Sentiment", "Risk Factors & Negative News"]:
-                            news_context += f"\n--- {category} ---\n"
-                            for it in selected:
-                                if it["category"] == category:
-                                    news_context += f"**{it['title'] or 'No Title'}** ({it['dom'] or 'n/a'}): {it['excerpt']}\n"
+        # Build News Context grouped by category
+        news_context = ""
+        for cat in ["Professional & Financial Analysis", "General Headlines", "Retail & Social Sentiment", "Risk Factors & Negative News"]:
+            news_context += f"\n--- {cat} ---\n"
+            for it in selected:
+                if it["category"] == cat:
+                    news_context += f"**{it['title']}** ({it['dom'] or 'n/a'}): {it['excerpt']}\n"
 
-                        #news_context += f"**{title}** ({dom}): {excerpt}\n"
-                        #news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
-
-                        # NEW: tally quality & diversity
-                        if dom:
-                            distinct_domains.add(dom)
-                            # treat investor relations / sec as pro
-                            if any(d in dom for d in pro_domains):
-                                pro_hits += 1
-                            elif any(d in dom for d in retail_domains):
-                                retail_hits += 1
-                        if body:
-                            fulltext_hits += 1
-
-                        if excerpt:
-                            evidence_count += 1
-                        lower_blob = f"{title} {snippet} {excerpt}".lower()
-                        if any(p.search(lower_blob) for p in earnings_patterns):
-                            earnings_recent_flag = True
-                        if any(p.search(lower_blob) for p in risk_patterns):
-                            risk_flag = True
-                else:
-                    news_context += "No recent results found.\n"
-            except Exception as e:
-                logging.error(f"News search error for {ticker} ({category}): {e}")
-                news_context += "Error fetching news.\n"
-
-        # --- Optional: Yahoo Finance news (0 Google quota) ---
-        ENABLE_YF_NEWS = getattr(config, "ENABLE_YF_NEWS", True)
-        YF_NEWS_MAX = getattr(config, "YF_NEWS_MAX", 12)
-        
-        if ENABLE_YF_NEWS:
-            try:
-                yf_news = yf.Ticker(ticker).news or []
-            except Exception:
-                yf_news = []
-            for item in yf_news[:YF_NEWS_MAX]:
-                title = item.get("title") or "No Title"
-                url = item.get("link") or ""
-                dom = _domain(url).lower() if url else ""
-                if dom.startswith(("www.","m.")): dom = dom.split(".",1)[1]
-                body = _fetch_article_text(url) if url else ""
-                excerpt = (body[:1200] if body else "") or (item.get("summary") or "")[:400]
-                news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
-        
-                # update meta like other hits
-                if dom:
-                    distinct_domains.add(dom)
-                    if any(d in dom for d in pro_domains): pro_hits += 1
-                    elif any(d in dom for d in retail_domains): retail_hits += 1
-                if body: fulltext_hits += 1
-                if excerpt: evidence_count += 1
-                lower_blob = f"{title} {excerpt}".lower()
-                if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
-                if any(p.search(lower_blob) for p in risk_patterns): risk_flag = True
-
-        # Persona analysis with hallucination guardrails
+        # Persona analysis (dates allowed; discourage stale financials)
+        today_str = datetime.now().strftime("%Y-%m-%d")
         personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
         system_prompt = (
             "You are an expert financial analyst writing from the perspective of a {persona}.\n"
-            "RULES:\n"
-            "• DO NOT invent numbers. Use numeric values ONLY if they appear in the Financial Data block.\n"
-            "• DO NOT mention specific calendar dates or exact price levels under any circumstance.\n"
-            "• Reference at least one concrete item from the News Context (title or outlet) without dates.\n"
+            "Rules:\n"
+            f"• Today's date is {today_str}. You may cite dates from articles.\n"
+            "• Prefer numeric values from the Financial Data block. If you use article numbers, attribute the outlet "
+            "  (domain) and note if the article is older than ~12 months.\n"
             "• If a metric is missing or 'N/A', say so explicitly.\n"
-            "• End with a one-sentence conclusion.\n\n"
-            "--- DATA AS OF {date} ---\n"
-            "**Financial Data:**\n{financial_data}\n\n"
-            "**News Context (titles/excerpts; dates redacted):**\n{news_context}\n\n"
+            "• Combine fundamentals and news context; end with a one-sentence conclusion.\n\n"
+            "--- FINANCIAL DATA (canonical) ---\n{financial_data}\n\n"
+            "--- NEWS CONTEXT (titles/excerpts; may include dates) ---\n{news_context}\n\n"
             "--- {persona} Analysis ---"
         )
         prompt = ChatPromptTemplate.from_template(system_prompt)
@@ -794,7 +697,6 @@ class AgenticLayer:
             try:
                 response = chain.invoke({
                     "persona": persona,
-                    "date": datetime.now().strftime("%Y-%m-%d"),
                     "financial_data": json.dumps(financial_data),
                     "news_context": news_context
                 })
@@ -806,30 +708,19 @@ class AgenticLayer:
         # attach observable metadata the judge/scheduler can use
         self.analysis_cache[ticker] = reports
         reports["_meta"] = {
-            "evidence_count": evidence_count,
-            "bucket_coverage": bucket_coverage,       # 0..3
+            "evidence_total_collected": len(evidence_items),
+            "evidence_used": len(selected),
+            "domains_used": sorted({it["dom"] for it in selected if it["dom"]}),
+            "evidence_count": len(selected),           # kept for backward-compat use by judge
+            "bucket_coverage": bucket_coverage,        # 0..4 now
             "earnings_recent_flag": earnings_recent_flag,
             "risk_flag": risk_flag,
-        }
-
-        # new fields and a simple “missing fundamentals” count
-        missing_financials = sum(
-            1 for k, v in financial_data.items()
-            if v in (None, "N/A", "")
-        )
-        reports["_meta"].update({
             "distinct_domains": len(distinct_domains),
             "pro_hits": pro_hits,
             "retail_hits": retail_hits,
             "fulltext_hits": fulltext_hits,
-            "missing_financials": missing_financials,
-        })
-
-        reports["_meta"].update({
-            "evidence_collected": len(evidence_items),
-            "evidence_used": len(selected),
-            "domains_used": sorted({it["dom"] for it in selected if it["dom"]}),
-        })
+            "missing_financials": sum(1 for _, v in financial_data.items() if v in (None, "N/A", "")),
+        }
 
         return reports
 
@@ -874,7 +765,7 @@ class AgenticLayer:
             "• +0.10 if pro_hits ≥ 2; +0.05 more if pro_hits ≥ 4\n"
             "• +0.05 if distinct_domains ≥ 4; −0.05 if distinct_domains ≤ 1\n"
             "• +0.05 if fulltext_hits ≥ 3\n"
-            "• +0.05 if bucket_coverage = 3 and evidence_count ≥ 6\n"
+            "• +0.05 if bucket_coverage ≥ 3 and evidence_count ≥ 8\n"
             "• −0.10 if retail_hits > 2 × pro_hits\n"
             "• −0.10 if missing_financials ≥ 3\n"
             "• −0.15 if risk_flag is true\n"
@@ -1013,25 +904,23 @@ class AgenticLayer:
             # --- Confidence post-processing (observable caps/boosts) ---
             meta = reports.get("_meta", {}) if isinstance(reports, dict) else {}
             evidence_count = int(meta.get("evidence_count", 0) or 0)
-            bucket_coverage = int(meta.get("bucket_coverage", 0) or 0)  # 0..3
-            earnings_flag = bool(meta.get("earnings_recent_flag", False))
+            bucket_coverage = int(meta.get("bucket_coverage", 0) or 0)  # 0..4
             risk_flag = bool(meta.get("risk_flag", False))
 
-            # Deterministic fallback if model omitted confidence
             if "confidence" not in judgment or judgment["confidence"] is None:
                 pro_hits = int(meta.get("pro_hits", 0) or 0)
                 retail_hits = int(meta.get("retail_hits", 0) or 0)
                 distinct_domains = int(meta.get("distinct_domains", 0) or 0)
                 fulltext_hits = int(meta.get("fulltext_hits", 0) or 0)
                 missing_financials = int(meta.get("missing_financials", 0) or 0)
-            
+
                 base_conf = 0.45
                 if pro_hits >= 2: base_conf += 0.10
                 if pro_hits >= 4: base_conf += 0.05
                 if distinct_domains >= 4: base_conf += 0.05
                 if distinct_domains <= 1: base_conf -= 0.05
                 if fulltext_hits >= 3: base_conf += 0.05
-                if bucket_coverage == 3 and evidence_count >= 6: base_conf += 0.05
+                if bucket_coverage >= 3 and evidence_count >= 8: base_conf += 0.05
                 if retail_hits > 2 * max(pro_hits, 1): base_conf -= 0.10
                 if missing_financials >= 3: base_conf -= 0.10
                 if risk_flag: base_conf -= 0.15
@@ -1043,7 +932,7 @@ class AgenticLayer:
                 base_conf = min(base_conf, 0.60)
             if risk_flag:
                 base_conf = min(base_conf, 0.50)
-            if bucket_coverage == 3 and evidence_count >= 6:
+            if bucket_coverage >= 3 and evidence_count >= 8:
                 base_conf = min(base_conf + 0.05, 1.0)
 
             judgment["confidence"] = max(0.0, min(1.0, base_conf))
@@ -1052,6 +941,7 @@ class AgenticLayer:
             qser = quant_df.loc[quant_df['Ticker'].str.upper() == ticker, 'Quant_Score']
             quant_score = qser.iloc[0] if not qser.empty else 'N/A'
 
+            # Results row (includes evidence summary)
             results.append({
                 'Ticker': ticker,
                 'Quant_Score': quant_score,
@@ -1062,8 +952,8 @@ class AgenticLayer:
                 'Justification': judgment.get('justification'),
                 'Market_Investor_Analysis': reports.get('Market Investor', 'N/A'),
                 'Value_Investor_Analysis': reports.get('Value Investor', 'N/A'),
-                'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A')
-                'Evidence_Total': meta.get('evidence_collected'),
+                'Devils_Advocate_Analysis': reports.get("Devil's Advocate", 'N/A'),
+                'Evidence_Total': meta.get('evidence_total_collected'),
                 'Evidence_Used': meta.get('evidence_used'),
                 'Domains_Used': ", ".join(meta.get('domains_used', []))[:1000],
             })
@@ -1083,7 +973,7 @@ class AgenticLayer:
             prev_latest.update(today_idxed)
             snapshot_df = prev_latest.combine_first(today_idxed).reset_index()
         else:
-            snapshot_df = results_df.copy()        
+            snapshot_df = results_df.copy()
 
         # Final ordering & date formatting
         snapshot_df['Analysis_Date'] = pd.to_datetime(snapshot_df['Analysis_Date']).dt.date.astype(str)
