@@ -449,6 +449,17 @@ class AgenticLayer:
         # domains that are frequently paywalled or heavy; we still keep titles/snippets if body can't be fetched
         paywall_suffixes = ("wsj.com", "bloomberg.com")
 
+        # NEW: source quality/diversity counters
+        pro_domains = (
+            "reuters.com","ft.com","wsj.com","bloomberg.com","sec.gov",
+            "investor.", "ir.", "cnbc.com","finance.yahoo.com","seekingalpha.com"  # keep SA as 'pro-ish' if you want
+        )
+        retail_domains = ("reddit.com","stocktwits.com","fool.com")
+        distinct_domains = set()
+        pro_hits = 0
+        retail_hits = 0
+        fulltext_hits = 0  # count of results where we fetched article body (not just snippet)
+
         for category, query in news_queries.items():
             news_context += f"\n--- {category} ---\n"
             try:
@@ -473,6 +484,17 @@ class AgenticLayer:
                         excerpt = _re.sub(r"\b\d{4}-\d{2}-\d{2}\b", "", excerpt)
 
                         news_context += f"**{title}** ({dom}): {excerpt}\n"
+
+                        # NEW: tally quality & diversity
+                        if dom:
+                            distinct_domains.add(dom)
+                            # treat investor relations / sec as pro
+                            if any(d in dom for d in pro_domains):
+                                pro_hits += 1
+                            elif any(d in dom for d in retail_domains):
+                                retail_hits += 1
+                        if body:
+                            fulltext_hits += 1
 
                         if excerpt:
                             evidence_count += 1
@@ -527,6 +549,20 @@ class AgenticLayer:
             "earnings_recent_flag": earnings_recent_flag,
             "risk_flag": risk_flag,
         }
+
+        # new fields and a simple “missing fundamentals” count
+        missing_financials = sum(
+            1 for k, v in financial_data.items()
+            if v in (None, "N/A", "")
+        )
+        reports["_meta"].update({
+            "distinct_domains": len(distinct_domains),
+            "pro_hits": pro_hits,
+            "retail_hits": retail_hits,
+            "fulltext_hits": fulltext_hits,
+            "missing_financials": missing_financials,
+        })
+
         return reports
 
     # ------------------------
@@ -546,15 +582,33 @@ class AgenticLayer:
         evidence_count = int(meta.get("evidence_count", 0) or 0)
         risk_flag = bool(meta.get("risk_flag", False))
 
+        distinct_domains = int(meta.get("distinct_domains", 0) or 0)
+        pro_hits = int(meta.get("pro_hits", 0) or 0)
+        retail_hits = int(meta.get("retail_hits", 0) or 0)
+        fulltext_hits = int(meta.get("fulltext_hits", 0) or 0)
+        missing_financials = int(meta.get("missing_financials", 0) or 0)
+
         system_prompt = (
             "You are a senior portfolio manager. Based on the three analyst reports, output ONLY a valid JSON object "
             'with keys: "rating" (float 0.0-1.0), "recommendation" ("Buy"|"Sell"|"Hold"|"Neutral"), '
             '"confidence" (float 0.0-1.0), and "justification" (string).\n\n'
-            f"META:\n- bucket_coverage: {{bucket_coverage}}\n- evidence_count: {{evidence_count}}\n- risk_flag: {{risk_flag}}\n\n"
+            f"META:\n"
+            f"- bucket_coverage: {{bucket_coverage}}\n"
+            f"- evidence_count: {{evidence_count}}\n"
+            f"- risk_flag: {{risk_flag}}\n"
+            f"- distinct_domains: {{distinct_domains}}\n"
+            f"- pro_hits: {{pro_hits}}\n"
+            f"- retail_hits: {{retail_hits}}\n"
+            f"- fulltext_hits: {{fulltext_hits}}\n"
+            f"- missing_financials: {{missing_financials}}\n\n"
             "Confidence rubric (apply deterministically, then clip 0..1):\n"
-            "• Start at 0.50\n"
-            "• +0.10 if bucket_coverage ≥ 2; +0.05 more if bucket_coverage = 3\n"
-            "• +0.05 if evidence_count ≥ 4; +0.05 more if evidence_count ≥ 6\n"
+            "• Start at 0.45\n"
+            "• +0.10 if pro_hits ≥ 2; +0.05 more if pro_hits ≥ 4\n"
+            "• +0.05 if distinct_domains ≥ 4; −0.05 if distinct_domains ≤ 1\n"
+            "• +0.05 if fulltext_hits ≥ 3\n"
+            "• +0.05 if bucket_coverage = 3 and evidence_count ≥ 6\n"
+            "• −0.10 if retail_hits > 2 × pro_hits\n"
+            "• −0.10 if missing_financials ≥ 3\n"
             "• −0.15 if risk_flag is true\n"
             "Return JSON only, with no extra text.\n\n"
             "Market Investor report:\n{market_report}\n\n"
@@ -569,7 +623,12 @@ class AgenticLayer:
                 "devils_report": reports["Devil's Advocate"],
                 "bucket_coverage": bucket_coverage,
                 "evidence_count": evidence_count,
-                "risk_flag": risk_flag
+                "risk_flag": risk_flag,
+                "distinct_domains": distinct_domains,
+                "pro_hits": pro_hits,
+                "retail_hits": retail_hits,
+                "fulltext_hits": fulltext_hits,
+                "missing_financials": missing_financials,
             })
             parsed = _safe_json_loads(response.content) or {
                 "rating": 0.0, "recommendation": "Neutral",
