@@ -518,6 +518,36 @@ class AgenticLayer:
                 logging.error(f"News search error for {ticker} ({category}): {e}")
                 news_context += "Error fetching news.\n"
 
+        # --- Optional: Yahoo Finance news (0 Google quota) ---
+        ENABLE_YF_NEWS = getattr(config, "ENABLE_YF_NEWS", True)
+        YF_NEWS_MAX = getattr(config, "YF_NEWS_MAX", 12)
+        
+        if ENABLE_YF_NEWS:
+            try:
+                yf_news = yf.Ticker(ticker).news or []
+            except Exception:
+                yf_news = []
+            for item in yf_news[:YF_NEWS_MAX]:
+                title = item.get("title") or "No Title"
+                url = item.get("link") or ""
+                dom = _domain(url).lower() if url else ""
+                if dom.startswith(("www.","m.")): dom = dom.split(".",1)[1]
+                body = _fetch_article_text(url) if url else ""
+                excerpt = (body[:1200] if body else "") or (item.get("summary") or "")[:400]
+                news_context += f"**{title}** ({dom or 'n/a'}): {excerpt}\n"
+        
+                # update meta like other hits
+                if dom:
+                    distinct_domains.add(dom)
+                    if any(d in dom for d in pro_domains): pro_hits += 1
+                    elif any(d in dom for d in retail_domains): retail_hits += 1
+                if body: fulltext_hits += 1
+                if excerpt: evidence_count += 1
+                lower_blob = f"{title} {excerpt}".lower()
+                if any(p.search(lower_blob) for p in earnings_patterns): earnings_recent_flag = True
+                if any(p.search(lower_blob) for p in risk_patterns): risk_flag = True
+
+
         # Persona analysis with hallucination guardrails
         personas = ["Market Investor", "Value Investor", "Devil's Advocate"]
         system_prompt = (
