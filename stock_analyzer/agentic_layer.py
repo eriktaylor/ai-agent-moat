@@ -625,6 +625,7 @@ class AgenticLayer:
             snapshot_df = results_df.copy()
 
         # Final ordering: highest Agent_Rating first (fallback to Quant_Score if tie/NaN)
+        snapshot_df['Analysis_Date'] = pd.to_datetime(snapshot_df['Analysis_Date']).dt.date.astype(str)
         snapshot_df['Agent_Rating'] = pd.to_numeric(snapshot_df['Agent_Rating'], errors='coerce')
         snapshot_df['Quant_Score']  = pd.to_numeric(snapshot_df['Quant_Score'], errors='coerce')
         snapshot_df.sort_values(by=["Agent_Rating","Quant_Score"], ascending=[False, False], inplace=True)
