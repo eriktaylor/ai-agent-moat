@@ -106,7 +106,7 @@ Once the notebook is open, follow the detailed instructions in Step 1 of the not
 3. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
 
-## Demo Application (Streamlit)
+**Demo Application (Streamlit)**
 
 The application is deployed and publicly available on Streamlit Community Cloud.
 
