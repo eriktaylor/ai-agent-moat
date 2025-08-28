@@ -105,12 +105,13 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 1. **Open in Google Colab**:
 Click the link below to open the project directly in Google Colab. This is the only step needed to access the application.
-[Try the AI Moat Analysis Agent Here](https://colab.research.google.com/github/eriktaylor/ai-agent-moat/blob/main/app.ipynb)
+[Try the AI Moat Analysis Agent Here](https://colab.research.google.com/github/eriktaylor/ai-agent-moat/blob/main/notebooks/app.ipynb)
 
-2. **Set Up API Keys**:
+
+3. **Set Up API Keys**:
 Once the notebook is open, follow the detailed instructions in Step 1 of the notebook to acquire your free API keys and add them to the Colab Secrets Manager.
 
-3. **Run the Analysis**:
+4. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
 
 ## Further Reading & Technical Deep Dive
