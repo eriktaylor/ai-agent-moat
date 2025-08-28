@@ -106,16 +106,16 @@ Once the notebook is open, follow the detailed instructions in Step 1 of the not
 3. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
 
-## Further Reading & Technical Deep Dive
-For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
-
-[Building a Multi-Tool RAG Agent for Financial Analysis](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4)
-
 ## Demo Application (Streamlit)
 
 The application is deployed and publicly available on Streamlit Community Cloud.
 
 [Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
+
+## Further Reading & Technical Deep Dive
+For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
+
+[Building a Multi-Tool RAG Agent for Financial Analysis](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4)
 
 ## Disclaimer
 The content and analysis provided by this AI agent are for informational and educational purposes only and should not be construed as financial advice, investment recommendations, or an offer or solicitation to buy or sell any securities. All investment decisions should be made with the guidance of a qualified financial professional.
