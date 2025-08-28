@@ -80,12 +80,6 @@ This example demonstrates the agent's ability to perform a specific type of anal
 > 3. How is deepseek bearish for nvda : r/wallstreetbets
 > 4. EYE ON THE MARKET • MICHAEL CEMBALEST • JP MORGAN ...
 
-## Demo Application (Streamlit)
-
-The application is deployed and publicly available on Streamlit Community Cloud.
-
-[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
-
 ## Technology Stack (Google Colab Demo)
 
 * **LLM:** Google Gemini 2.5 Flash
@@ -116,6 +110,12 @@ Execute the cells in the notebook. The final cell will prompt you for a company 
 For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
 
 [Building a Multi-Tool RAG Agent for Financial Analysis](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4)
+
+## Demo Application (Streamlit)
+
+The application is deployed and publicly available on Streamlit Community Cloud.
+
+[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
 
 ## Disclaimer
 The content and analysis provided by this AI agent are for informational and educational purposes only and should not be construed as financial advice, investment recommendations, or an offer or solicitation to buy or sell any securities. All investment decisions should be made with the guidance of a qualified financial professional.
