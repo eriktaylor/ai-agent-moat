@@ -24,7 +24,15 @@ This RAG architecture is crucial for the agent's reliability. It grounds the LLM
 
 ## Project Evolution
 
-**Most Recent Update (August 14, 2025)**:
+**Most Recent Update (August 28, 2025)**:
+
+* Cleaner candidate selection: S&P 500–only universe, single standardized quantitative source, consistent formatting, and deterministic ranking.
+
+* Unified news intake: Google Custom Search + Yahoo Finance News with full-text fetching, caching, per-domain caps, and a scored evidence budget.
+
+* Clearer scoring: Judge confidence is computed from source diversity, pro/retail mix, full-text hits, recency, and risk flags; fundamentals expanded (FCF, OCF, D/E, P/B, EV/EBITDA, dividend yield) with simple sanity checks on outliers.
+
+**Update (August 14, 2025)**:
 
 * Enhanced candidate generation and agentic recommendation scripts to run on a scheduled weekly GitHub Actions workflow.
 
