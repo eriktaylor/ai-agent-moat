@@ -4,19 +4,19 @@ This project is an AI-powered agent that automates the initial phase of investme
 
 ## Business Objective
 
-Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in minutes.
+Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering comprehensive analysis autonomously.
 
 ## What is an AI Agent?
 
-Unlike a simple chatbot, the AI agent in this project is a more sophisticated system designed to achieve a complex goal. It operates with a distinct workflow, combining a Reasoning Engine (Google's Gemini 2.5 Flash) with a Set of Tools to access real-world information like financial data, live news, and social media. The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
+Unlike a chatbot, an AI agent is a highly structured system designed to achieve a specific goal. This agent operates a coordinated investment-research workflow. It blends a quantitative signal layer with a reasoning model and a small toolkit (market data, filings, news, and sentiment sources). The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
 
 ## The Role of RAG (Retrieval-Augmented Generation)
 
 A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where **Retrieval-Augmented Generation (RAG)** becomes essential. The RAG pipeline works as follows:
 
 1.  **Retrieve:** The agent uses its tools to fetch the latest news, financial data, and reports from the internet.
-2.  **Augment:** This fresh information is compiled into a dynamic, "on-the-fly" knowledge base for the specific company being analyzed.
-3.  **Generate:** The LLM is instructed to base its analysis *only* on this freshly provided context.
+2.  **Augment:** Assemble a per-ticker dossier, prioritize fresher, higher-quality sources, and de-emphasize stale items.
+3.  **Generate:** Produce analysis that cites and relies on that dossier, not on prior training.
 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
