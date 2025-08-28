@@ -20,12 +20,6 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
-## Live Demo (Streamlit)
-
-The application is deployed and publicly available on Streamlit Community Cloud.
-
-[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
-
 ---
 
 ## Project Evolution
@@ -78,6 +72,11 @@ This example demonstrates the agent's ability to perform a specific type of anal
 > 3. How is deepseek bearish for nvda : r/wallstreetbets
 > 4. EYE ON THE MARKET • MICHAEL CEMBALEST • JP MORGAN ...
 
+## Demo Application (Streamlit)
+
+The application is deployed and publicly available on Streamlit Community Cloud.
+
+[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
 
 ## Technology Stack (Google Colab Demo)
 
