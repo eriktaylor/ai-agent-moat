@@ -94,7 +94,14 @@ This example demonstrates the agent's ability to perform a specific type of anal
 
 ## How to Run
 
-Running the agent is simple and requires no local installation.
+**Demo Application (Streamlit) with user-query use-case:**
+
+The application is deployed and publicly available on Streamlit Community Cloud.
+
+[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
+
+
+**Running the agent on COLAB with user query use-case:**
 
 1. **Open in Google Colab**:
 Click the link below to open the project directly in Google Colab. This is the only step needed to access the application.
@@ -105,12 +112,6 @@ Once the notebook is open, follow the detailed instructions in Step 1 of the not
 
 3. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
-
-**Demo Application (Streamlit)**
-
-The application is deployed and publicly available on Streamlit Community Cloud.
-
-[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
 
 ## Further Reading & Technical Deep Dive
 For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
