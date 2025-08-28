@@ -8,7 +8,7 @@ Strategic analysis of a company's competitive advantages, or 'moat,' is a corner
 
 ## What is an AI Agent?
 
-Unlike a chatbot, an AI agent is a highly structured system designed to achieve a specific goal. This agent operates a coordinated investment-research workflow. It blends a quantitative signal layer with a reasoning model and a small toolkit (market data, filings, news, and sentiment sources). The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
+Unlike a chatbot, an AI agent is a highly structured system designed to achieve a specific goal. This agent operates a coordinated investment-research workflow. It blends a quantitative signal layer with a reasoning model and a toolkit (market data, filings, news, and sentiment sources). The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
 
 ## The Role of RAG (Retrieval-Augmented Generation)
 
