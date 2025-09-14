@@ -1,0 +1,11 @@
+{
+  "sp500_fundamental_data.csv": {
+    "fetched_at": "2025-09-08T14:23:10.495774+00:00"
+  },
+  "sp500_price_data.csv": {
+    "fetched_at": "2025-09-08T14:21:30.800107+00:00"
+  },
+  "spy_market_data.csv": {
+    "fetched_at": "2025-09-08T14:21:30.807619+00:00"
+  }
+}
