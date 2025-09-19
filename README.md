@@ -124,5 +124,7 @@ For a more detailed, step-by-step tutorial on the technical implementation, arch
 
 [Building a Multi-Tool RAG Agent for Financial Analysis](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4)
 
+**Note: This explains the user query use-case, not the complete autonomous workflow.**
+
 ## Disclaimer
 The content and analysis provided by this AI agent are for informational and educational purposes only and should not be construed as financial advice, investment recommendations, or an offer or solicitation to buy or sell any securities. All investment decisions should be made with the guidance of a qualified financial professional.
