@@ -53,7 +53,7 @@ class DataManager:
     # ---------------------------
     # Freshness logic
     # ---------------------------
-    def _is_data_stale(self, path: str, max_age_days: int, *, date_col: str | None = None) -> bool:
+    def _is_data_stale(self, path: str, max_age_days: int, *, date_col: str | None = None):
         """
         Determine staleness using:
           - meta fetched_at (business days)
@@ -62,9 +62,11 @@ class DataManager:
         """
         
         p = Path(path)
+        reason = "None"
+        
         if not p.exists():
-            print("Stale check: Data path doesn't exist")
-            return True
+            reason="Stale check: Data path doesn't exist"
+            return True, reason
     
         meta = self._load_meta()
         now_utc = datetime.now(timezone.utc)
@@ -74,17 +76,18 @@ class DataManager:
                 ts = datetime.fromisoformat(rec["fetched_at"])
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
-                return (now_utc - ts) > timedelta(days=max_age_days)
+                reason="greater than max_age_days"
+                return (now_utc - ts) > timedelta(days=max_age_days), reason
             except Exception:
                 pass  
         # Missing file
         if not os.path.exists(path):
-            print(f"🔎 Freshness: {os.path.basename(path)} → missing → STALE")
-            return True
+            reason= f"🔎 Freshness: {os.path.basename(path)} → missing → STALE"
+            return True, reason
 
         # 2) Cannot determine the age of data
-        print("Stale check: cannot determine the age of data.")
-        return True
+        reason = "Stale check: cannot determine the age of data." 
+        return True, reason
 
     # ---------------------------
     # Data sources
@@ -128,9 +131,10 @@ class DataManager:
         print("\n--- 📊 Loading All Financial Data ---")
     
         # ---------------- Prices (+ SPY together) ----------------
-        price_stale = self._is_data_stale(config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
+        price_stale, reason = self._is_data_stale(config.PRICE_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
         if price_stale:
             print("⏳ Price data cache is stale. Downloading new data (S&P 500 + SPY)...")
+            print("The reason is:", reason)
             tickers = self.get_sp500_tickers()
             #tickers=tickers[:50] #FOR DEBUGGING
             if not tickers:
@@ -204,10 +208,11 @@ class DataManager:
             print(f"⚠️ spy_df missing columns {missing_spy}. Proceeding with available columns.")
     
         # ---------------- Fundamentals ----------------
-        fundamentals_stale = self._is_data_stale(config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
+        fundamentals_stale, reason = self._is_data_stale(config.FUNDAMENTAL_DATA_PATH, config.CACHE_MAX_AGE_DAYS)
 
         if fundamentals_stale:
             print("⏳ Refreshing fundamentals (ticker-by-ticker via yfinance)...")
+            print("The reason is:", reason)
             available_tickers = price_df["Ticker"].dropna().unique().tolist()        
             # --- curated, model-friendly shortlist of fundamentals (28 fields) ---
             fields = [
