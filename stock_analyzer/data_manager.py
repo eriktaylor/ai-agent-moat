@@ -76,7 +76,7 @@ class DataManager:
                 ts = datetime.fromisoformat(rec["fetched_at"])
                 if ts.tzinfo is None:
                     ts = ts.replace(tzinfo=timezone.utc)
-                reason=f"greater than {str(max_age_days)} max_age_days"
+                reason=f"{str(ts} is greater than max age in days of {str(max_age_days)}"
                 return (now_utc - ts) > timedelta(days=max_age_days), reason
             except Exception:
                 pass  
