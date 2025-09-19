@@ -22,7 +22,13 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 
 ## Project Evolution
 
-**Most Recent Update (August 28, 2025)**:
+**Most Recent Update (September 19, 2025)**:
+
+* New Portfolio Manager Agent: A top-level strategic agent now synthesizes all analysis, forms a dynamic market thesis using live web data, and constructs a weighted portfolio with LLM-driven reasoning.
+
+* Refined Agent Prioritization & Pipeline Stability: Implemented a sophisticated, weighted priority score for agentic analysis (blending quant score, novelty, and staleness). Resolved key data pipeline bugs for improved reliability.
+
+**Update (August 28, 2025)**:
 
 * Cleaner candidate selection: S&P 500–only universe, single standardized quantitative source, consistent formatting, and deterministic ranking.
 
