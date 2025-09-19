@@ -31,7 +31,7 @@ TOP_N_CANDIDATES = 250
 
 # --- Agentic Layer Parameters ---
 # The number of top-ranked candidates from the quantitative model to pass to the agentic layer.
-QUANT_DEEP_DIVE_CANDIDATES = 3
+QUANT_DEEP_DIVE_CANDIDATES = 10
 #Use the scout agent to find new tickers outside the S&P500?
 ENABLE_SCOUT = False
 # The maximum number of new tickers for the scout agent to propose.
