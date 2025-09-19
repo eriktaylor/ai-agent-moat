@@ -63,6 +63,7 @@ class DataManager:
         
         p = Path(path)
         if not p.exists():
+            print("Stale check: Data path doesn't exist")
             return True
     
         meta = self._load_meta()
@@ -82,6 +83,7 @@ class DataManager:
             return True
 
         # 2) Cannot determine the age of data
+        print("Stale check: cannot determine the age of data.")
         return True
 
     # ---------------------------
