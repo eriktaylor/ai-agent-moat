@@ -94,6 +94,8 @@ This example demonstrates the agent's ability to perform a specific type of anal
 
 ## How to Run
 
+The current pipeline runs autonomously using GitHub Actions. One-off queries can be run as per below:
+
 **Demo Application (Streamlit) with user-query use-case:**
 
 The application is deployed and publicly available on Streamlit Community Cloud.
