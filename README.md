@@ -94,7 +94,10 @@ This example demonstrates the agent's ability to perform a specific type of anal
 
 ## How to Run
 
-The current pipeline runs autonomously using GitHub Actions. One-off queries can be run as per below:
+**The current pipeline runs autonomously using GitHub Actions.**
+
+Custom user queries can be run as per below.
+
 
 **Demo Application (Streamlit) with user-query use-case:**
 
