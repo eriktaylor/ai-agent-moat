@@ -26,7 +26,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      # Resolve the weekly workflow ID to avoid name mismatches
       - name: Resolve weekly workflow ID
         id: wf
         run: |
@@ -35,18 +34,15 @@ jobs:
                -H "Accept: application/vnd.github+json" \
                "https://api.github.com/repos/${{ github.repository }}/actions/workflows" \
             > workflows.json
-
-          # Match by name first, then fallback to filename if needed
           name="Weekly Pipeline (read-only)"
           wid=$(jq -r --arg NAME "$name" '.workflows[] | select(.name==$NAME) | .id' workflows.json)
           if [ -z "$wid" ] || [ "$wid" = "null" ]; then
-            file=".github/workflows/weekly-pipeline.yml"   # change if different
+            file=".github/workflows/pipeline.yml"
             wid=$(jq -r --arg FILE "$file" '.workflows[] | select(.path==$FILE) | .id' workflows.json)
           fi
           test -n "$wid" && test "$wid" != "null"
           echo "workflow_id=$wid" >> "$GITHUB_OUTPUT"
 
-      # Resolve a single RUN_ID for both trigger modes
       - name: Resolve run id
         id: rid
         run: |
@@ -54,7 +50,6 @@ jobs:
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             rid="${{ github.event.workflow_run.id }}"
           else
-            # Manual: pick latest successful run of the weekly workflow on main
             rid=$(curl -s -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
                        -H "Accept: application/vnd.github+json" \
                        "https://api.github.com/repos/${{ github.repository }}/actions/workflows/${{ steps.wf.outputs.workflow_id }}/runs?branch=${{ github.event.inputs.branch || 'main' }}&status=success&per_page=1" \
@@ -63,7 +58,6 @@ jobs:
           fi
           echo "run_id=$rid" >> "$GITHUB_OUTPUT"
 
-      # One download step using the resolved RUN_ID
       - name: Download artifacts
         uses: dawidd6/action-download-artifact@v3
         with:
@@ -73,32 +67,41 @@ jobs:
           path: _results
           repo: ${{ github.repository }}
 
-      - name: Show downloaded artifact contents (debug)
-        run: |
-          echo "Downloaded files:"
-          find _results -maxdepth 3 -type f -print
-
       - name: Stage results into repo working tree
         run: |
           set -euo pipefail
           shopt -s globstar nullglob
           mkdir -p data/search_cache
 
-          echo "Copy CSVs (flat or nested) into data/:"
-          for f in _results/*.csv _results/data/*.csv; do
+          echo "Copying updated meta.json to data/meta.json"
+          # Find meta.json whether it's nested or not, and copy it to the correct final destination.
+          meta_file=$(find _results -type f -name 'meta.json' | head -n 1)
+          if [ -n "$meta_file" ]; then
+            cp -f "$meta_file" data/meta.json
+            echo "  -> Copied $meta_file to data/meta.json"
+          else
+            echo "  -> WARNING: meta.json not found in artifacts."
+          fi
+
+          echo "Copy CSVs into data/:"
+          # Use a recursive glob to find CSVs at any depth
+          for f in _results/**/*.csv; do
             [ -e "$f" ] || continue
             echo "  -> $f"
             cp -f "$f" data/
           done
 
-          echo "Copy search cache JSON (flat or nested) into data/search_cache/:"
-          for f in _results/*.json _results/data/search_cache/*.json; do
+          echo "Copy search cache JSON into data/search_cache/:"
+          # Use a recursive glob to find JSON files
+          for f in _results/**/*.json; do
+            # Skip meta.json, as it has already been handled.
+            if [[ "$(basename "$f")" == "meta.json" ]]; then continue; fi
             [ -e "$f" ] || continue
             echo "  -> $f"
-            cp -f "$f" data/
+            cp -f "$f" data/search_cache/
           done
 
-          # Optional manifest-based pruning (adjust if your manifest lives under _results/data/search_cache/)
+          # Optional manifest-based pruning
           if [ -f _results/_manifest_cache.txt ]; then
             sort -u _results/_manifest_cache.txt > _results/_keep.txt
             for f in data/search_cache/*.json; do
