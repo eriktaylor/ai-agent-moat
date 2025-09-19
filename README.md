@@ -10,15 +10,15 @@ Strategic analysis of a company's competitive advantages, or 'moat,' is a corner
 
 Unlike a chatbot, an AI agent is a highly structured system designed to achieve a specific goal. This agent operates a coordinated investment-research workflow. It blends a quantitative signal layer with a reasoning model and a toolkit (market data, web search). The agent's core logic is a Workflow with Personas, where it gathers data through a multi-tiered search strategy and then reasons from multiple distinct investor perspectives including a **Market Investor**, a **Value Investor**, and a **Devil's Advocate** to provide a balanced and nuanced analysis.
 
-## The Role of RAG (Retrieval-Augmented Generation)
+A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where **Retrieval-Augmented Generation (RAG)** becomes essential. This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
-A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where **Retrieval-Augmented Generation (RAG)** becomes essential. The RAG pipeline works as follows:
+---
 
-1.  **Retrieve:** The agent uses its tools to fetch the latest news, financial data, and reports from the internet.
-2.  **Augment:** Assemble a per-ticker dossier, prioritize fresher, higher-quality sources, and de-emphasize stale items.
-3.  **Generate:** Produce analysis that cites and relies on that dossier, not on prior training.
+## 📈 Live Portfolio Strategy
 
-This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
+*This section is automatically updated by the AI Portfolio Manager. Last updated: 2025-09-19.*
+
+**Market Thesis:** The current market environment presents few clear opportunities. High-scoring quantitative candidates are facing significant qualitative headwinds. The portfolio will adopt a defensive and highly selective stance.
 
 ---
 
