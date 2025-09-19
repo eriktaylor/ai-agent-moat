@@ -19,7 +19,7 @@ AGENTIC_RESULTS_PATH = os.path.join(DATA_DIR, 'agentic_recommendations.csv')
 
 # --- Data Fetching Parameters ---
 # How old a cached file can be before we refresh it.
-CACHE_MAX_AGE_DAYS = 99
+CACHE_MAX_AGE_DAYS = 3
 # The historical data period to download.
 YFINANCE_PERIOD = "3y"
 
