@@ -95,7 +95,7 @@ jobs:
           for f in _results/*.json _results/data/search_cache/*.json; do
             [ -e "$f" ] || continue
             echo "  -> $f"
-            cp -f "$f" data/search_cache/
+            cp -f "$f" data/
           done
 
           # Optional manifest-based pruning (adjust if your manifest lives under _results/data/search_cache/)
