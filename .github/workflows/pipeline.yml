@@ -122,6 +122,69 @@ jobs:
                   print("❌ Agentic layer failed:", e)
           else:
               print("⚠️ Agentic layer skipped (no Google secrets).")
+
+          # --- Run the Portfolio Manager ---
+          if os.environ.get("GOOGLE_API_KEY") and os.environ.get("GOOGLE_CSE_ID"):
+              print("🔹 Portfolio Manager …")
+              try:
+                  from stock_analyzer.portfolio_manager import PortfolioManager
+                  quant_df = pd.read_csv(config.CANDIDATE_RESULTS_PATH)
+                  agentic_df = pd.read_csv(config.AGENTIC_RESULTS_PATH)
+    
+                  pm = PortfolioManager()
+                  thesis, new_portfolio_df = pm.generate_portfolio(quant_df, agentic_df)
+                  
+                  if not new_portfolio_df.empty:
+                      new_portfolio_df.to_csv(config.PORTFOLIO_PATH, index=False)
+                      print(f"✅ Wrote portfolio to {config.PORTFOLIO_PATH}")
+    
+                  print("🔹 Updating README.md with new thesis...")
+                  readme_path = 'README.md'
+                  try:
+                      with open(readme_path, 'r', encoding='utf-8') as f:
+                          readme_content = f.read()
+
+                      # --- 1. Update Thesis Content ---
+                      today_str = datetime.now().strftime('%Y-%m-%d')
+                      new_thesis_content = (
+                          f"*This section is automatically updated by the AI Portfolio Manager. Last updated: {today_str}.*\n\n"
+                          f"{thesis}"
+                      )
+                      readme_content = re.sub(
+                          r"(?s)<!-- START: PORTFOLIO_THESIS -->.*<!-- END: PORTFOLIO_THESIS -->",
+                          f"<!-- START: PORTFOLIO_THESIS -->\n{new_thesis_content}\n<!-- END: PORTFOLIO_THESIS -->",
+                          readme_content
+                      )
+
+                      # --- 2. NEW: Update Portfolio Summary Content ---
+                      portfolio_summary = ""
+                      if not new_portfolio_df.empty:
+                          total_weight = new_portfolio_df['Weight_%'].sum()
+                          for _, row in new_portfolio_df.iterrows():
+                              portfolio_summary += f"{row['Ticker']}: {row['Weight_%']:.1f}%\n"
+                          cash_weight = 100 - total_weight
+                          portfolio_summary += f"U.S. Treasury Bills (Cash Equivalent): {cash_weight:.1f}%"
+                      else:
+                          portfolio_summary = "100% in U.S. Treasury Bills (Cash Equivalent)"
+                      
+                      readme_content = re.sub(
+                          r"(?s)<!-- START: PORTFOLIO_SUMMARY -->.*<!-- END: PORTFOLIO_SUMMARY -->",
+                          f"<!-- START: PORTFOLIO_SUMMARY -->\n{portfolio_summary}\n<!-- END: PORTFOLIO_SUMMARY -->",
+                          readme_content
+                      )
+    
+                      with open(readme_path, 'w', encoding='utf-8') as f:
+                          f.write(readme_content)
+                      
+                      print("✅ README.md updated successfully with thesis and portfolio.")          
+                  except Exception as e:
+                      print(f"❌ Failed to update README.md: {e}")
+    
+              except Exception as e:
+                  print(f"❌ Portfolio Manager failed: {e}")
+          else:
+              print("⚠️ Agentic layer skipped (no Google secrets).")
+          
           PY
 
       - name: Upload artifacts (CSVs + cache + manifest)
@@ -133,4 +196,5 @@ jobs:
             data/meta.json
             data/search_cache/*.json
             data/search_cache/_manifest_cache.txt
+            README.md
           if-no-files-found: warn
