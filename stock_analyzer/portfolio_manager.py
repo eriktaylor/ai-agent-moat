@@ -157,4 +157,4 @@ class PortfolioManager:
             })
             
         final_portfolio = pd.DataFrame(portfolio_list)
-        return final_portfolio
+        return final_portfolio, thesis
