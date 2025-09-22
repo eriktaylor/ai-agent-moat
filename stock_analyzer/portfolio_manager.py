@@ -114,7 +114,7 @@ class PortfolioManager:
         print(f"--- ✅ Portfolio construction complete. Allocations: {allocations}")
         return allocations
 
-    def generate_portfolio(self, quant_df: pd.DataFrame, agentic_df: pd.DataFrame) -> pd.DataFrame:
+    def generate_portfolio(self, quant_df: pd.DataFrame, agentic_df: pd.DataFrame) -> tuple[str, pd.DataFrame]:
         """The main orchestration method for the Portfolio Manager agent."""
         print("\n--- 🤖 Portfolio Manager Activated ---")
 
@@ -157,4 +157,4 @@ class PortfolioManager:
             })
             
         final_portfolio = pd.DataFrame(portfolio_list)
-        return final_portfolio, thesis
+        return thesis, final_portfolio
