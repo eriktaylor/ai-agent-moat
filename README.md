@@ -22,6 +22,15 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 We maintain a Cautiously Optimistic posture for the upcoming week. While the Federal Reserve's steady interest rate outlook for 2025 provides a stable macroeconomic backdrop, our internal analyst signals indicate a highly selective market, with strong buy opportunities identified in only a limited number of high-potential stocks.
 <!-- END: PORTFOLIO_THESIS -->
 
+**Current Portfolio:**
+<!-- START: PORTFOLIO_SUMMARY -->
+*This section is automatically updated by the AI Portfolio Manager.*
+<!-- END: PORTFOLIO_SUMMARY -->
+
+---
+
+## Project Evolution
+
 ---
 
 ## Project Evolution
