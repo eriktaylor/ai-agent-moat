@@ -12,11 +12,15 @@ Unlike a chatbot, an AI agent is a highly structured system designed to achieve 
 
 A key challenge with Large Language Models is that their knowledge is frozen at the time they were trained. To perform timely financial analysis, an agent needs access to up-to-the-minute information. This is where **Retrieval-Augmented Generation (RAG)** becomes essential. This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
+---
+
 ## 📈 Live Portfolio Strategy
 
+<!-- START: PORTFOLIO_THESIS -->
 *This section is automatically updated by the AI Portfolio Manager. Last updated: 2025-09-19.*
 
 We adopt a **Cautiously Optimistic** market posture for the upcoming week, driven by the Federal Reserve's stable interest rate environment and sustained strength in key sectors like Financials. However, our internal analysis indicates a highly selective landscape, with high-conviction opportunities remaining scarce, necessitating a focused investment approach.
+<!-- END: PORTFOLIO_THESIS -->
 
 ---
 
