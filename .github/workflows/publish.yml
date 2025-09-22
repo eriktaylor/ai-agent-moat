@@ -73,45 +73,24 @@ jobs:
           shopt -s globstar nullglob
           mkdir -p data/search_cache
 
-          echo "Copying updated meta.json to data/meta.json"
-          # Find meta.json whether it's nested or not, and copy it to the correct final destination.
-          meta_file=$(find _results -type f -name 'meta.json' | head -n 1)
-          if [ -n "$meta_file" ]; then
-            cp -f "$meta_file" data/meta.json
-            echo "  -> Copied $meta_file to data/meta.json"
-          else
-            echo "  -> WARNING: meta.json not found in artifacts."
-          fi
+          echo "Copying updated README.md to root..."
+          if [ -f _results/README.md ]; then
+            cp -f _results/README.md ./README.md
+          fi          
 
           echo "Copy CSVs into data/:"
-          # Use a recursive glob to find CSVs at any depth
-          for f in _results/**/*.csv; do
+          for f in _results/*.csv _results/data/*.csv; do
             [ -e "$f" ] || continue
-            echo "  -> $f"
             cp -f "$f" data/
           done
 
-          echo "Copy search cache JSON into data/search_cache/:"
-          # Use a recursive glob to find JSON files
-          for f in _results/**/*.json; do
-            # Skip meta.json, as it has already been handled.
-            if [[ "$(basename "$f")" == "meta.json" ]]; then continue; fi
-            [ -e "$f" ] || continue
-            echo "  -> $f"
-            cp -f "$f" data/search_cache/
+          echo "Copy search cache and meta JSON files:"
+          cp -f _results/meta.json data/meta.json 2>/dev/null || true
+          for f in _results/data/search_cache/*.json _results/*.json; do
+            if [[ "$(basename "$f")" != "meta.json" ]]; then
+              [ -e "$f" ] && cp -f "$f" data/search_cache/
+            fi
           done
-
-          # Optional manifest-based pruning
-          if [ -f _results/_manifest_cache.txt ]; then
-            sort -u _results/_manifest_cache.txt > _results/_keep.txt
-            for f in data/search_cache/*.json; do
-              [ -e "$f" ] || continue
-              base=$(basename "$f")
-              if ! grep -qx "$base" _results/_keep.txt; then
-                git rm -f -- "$f" || true
-              fi
-            done
-          fi
 
           echo "Pending changes:"
           git status --porcelain
@@ -130,12 +109,13 @@ jobs:
           body: |
             Automated outputs from the scheduled pipeline.
 
-            - Updated base data (prices, fundamentals, SPY)
-            - Candidates & agentic CSVs
-            - Search cache (synced with TTL)
-          commit-message: "chore: weekly pipeline outputs (data refresh + CSVs + cache sync)"
+            - Updated base data and agentic analysis
+            - New portfolio construction and market thesis
+            - **Live README has been updated with the new thesis**
+          commit-message: "chore: weekly pipeline outputs (data, portfolio, and README update)"
           add-paths: |
             data
+            README.md
           delete-branch: true
 
       - name: PR info
