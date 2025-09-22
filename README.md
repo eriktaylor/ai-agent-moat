@@ -17,9 +17,9 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 ## 📈 Live Portfolio Strategy
 
 <!-- START: PORTFOLIO_THESIS -->
-*This section is automatically updated by the AI Portfolio Manager. Last updated: 2025-09-19.*
+*This section is automatically updated by the AI Portfolio Manager. Last updated: 2025-09-22.*
 
-We adopt a **Cautiously Optimistic** market posture for the upcoming week, driven by the Federal Reserve's stable interest rate environment and sustained strength in key sectors like Financials. However, our internal analysis indicates a highly selective landscape, with high-conviction opportunities remaining scarce, necessitating a focused investment approach.
+We maintain a Cautiously Optimistic posture for the upcoming week. While the Federal Reserve's steady interest rate outlook for 2025 provides a stable macroeconomic backdrop, our internal analyst signals indicate a highly selective market, with strong buy opportunities identified in only a limited number of high-potential stocks.
 <!-- END: PORTFOLIO_THESIS -->
 
 ---
