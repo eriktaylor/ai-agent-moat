@@ -1,3 +1,5 @@
+# app.py
+
 import streamlit as st
 import datetime
 import re
@@ -94,7 +96,7 @@ with st.sidebar:
 @st.cache_resource
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=api_key)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     from langchain_community.tools import DuckDuckGoSearchRun
@@ -126,17 +128,17 @@ def run_full_analysis(company_name, stock_ticker):
             financial_data_str = get_stock_info.run(stock_ticker)
             base_results["financial_data"] = financial_data_str
 
+            # --- CRITICAL FIX: Do not stop the analysis if financial data fails. ---
+            # Instead, show a warning and let the agent proceed with web data only.
+            # The agent itself is designed to handle this failure gracefully.
             if financial_data_str.startswith("Error"):
-                st.error(f"Failed to retrieve financial data for {stock_ticker}. The analysis cannot proceed. Details: {financial_data_str}")
-                base_results["status"] = "error"
-                base_results["error"] = True
-                return base_results
+                st.warning(f"Could not retrieve complete financial data for {stock_ticker}. Proceeding with web analysis only.")
+                # The early 'return' that caused the analysis to fail has been removed.
 
             base_results["market_outlook"] = research_agent.generate_market_outlook(company_name, stock_ticker)
             base_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
             base_results["devils_advocate"] = research_agent.generate_devils_advocate_view(company_name, stock_ticker)
             
-            # <<< BUG FIX: Correctly passing company_name as the first argument >>>
             base_results["final_summary"] = research_agent.generate_final_summary(
                 company_name,
                 base_results["market_outlook"].get('answer', ''),

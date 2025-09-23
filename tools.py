@@ -1,64 +1,86 @@
+# tools.py
+
 import yfinance as yf
 from langchain.tools import tool
-import requests  # <-- ADD THIS IMPORT
+import requests
 
 @tool
 def get_stock_info(ticker: str) -> str:
     """
     Fetches key financial information for a given stock ticker using the yfinance library.
-    Returns a formatted string of the data or an error message if the ticker is invalid or data is unavailable.
+    Uses a multi-step fallback approach to ensure robustness against API changes.
+    Returns a formatted string of the data or an error message if critical data is unavailable.
     """
     try:
-        # --- THIS IS THE FIX ---
-        # Create a session with a browser-like User-Agent to avoid being blocked.
         session = requests.Session()
         session.headers.update({
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36'
         })
         
-        # Pass the session to the Ticker object.
         stock = yf.Ticker(ticker, session=session)
-        # --- END OF FIX ---
+        
+        # --- NEW ROBUST DATA FETCHING LOGIC ---
+        data = {}
 
-        info = stock.info
+        # 1. Use fast_info for the most critical, real-time data
+        fi = getattr(stock, "fast_info", {})
+        data["Current Price"] = fi.get("lastPrice")
+        data["Previous Close"] = fi.get("previousClose")
+        data["Open"] = fi.get("open")
+        data["Day Low"] = fi.get("dayLow")
+        data["Day High"] = fi.get("dayHigh")
+        data["Volume"] = fi.get("volume")
+        data["Market Cap"] = fi.get("marketCap")
 
-        # Check if essential data is present. 'regularMarketPrice' is a good indicator of a valid ticker.
-        if not info or 'regularMarketPrice' not in info or info['regularMarketPrice'] is None:
-            return f"Error: Could not retrieve valid data for ticker '{ticker}'. It may be an invalid symbol."
+        # 2. Use history() as a fallback for price if fast_info fails
+        if data.get("Current Price") is None:
+            try:
+                hist = stock.history(period="1d")
+                if not hist.empty:
+                    data["Current Price"] = float(hist["Close"].iloc[-1])
+                    if data.get("Open") is None:
+                         data["Open"] = float(hist["Open"].iloc[-1])
+            except Exception:
+                pass # Ignore if history fails
 
-        # Define the data points we want to extract
-        key_metrics = {
-            "Company Name": info.get('longName'),
-            "Symbol": info.get('symbol'),
-            "Current Price": info.get('regularMarketPrice'),
-            "Previous Close": info.get('previousClose'),
-            "Open": info.get('open'),
-            "Day Low": info.get('dayLow'),
-            "Day High": info.get('dayHigh'),
-            "Market Cap": info.get('marketCap'),
-            "Trailing P/E": info.get('trailingPE'),
-            "Forward P/E": info.get('forwardPE'),
-            "Trailing EPS": info.get('trailingEps'),
-            "Volume": info.get('volume'),
-            "52 Week High": info.get('fiftyTwoWeekHigh'),
-            "52 Week Low": info.get('fiftyTwoWeekLow'),
-        }
+        # 3. Use get_info() for less critical, supplemental data (can be slow/flaky)
+        try:
+            info = stock.get_info()
+            data["Company Name"] = info.get('longName')
+            data["Symbol"] = info.get('symbol')
+            data["Trailing P/E"] = info.get('trailingPE')
+            data["Forward P/E"] = info.get('forwardPE')
+            data["Trailing EPS"] = info.get('trailingEps')
+            data["52 Week High"] = info.get('fiftyTwoWeekHigh')
+            data["52 Week Low"] = info.get('fiftyTwoWeekLow')
+            # Use get_info as a fallback for data that might also be in fast_info
+            if data.get("Market Cap") is None: data["Market Cap"] = info.get('marketCap')
+            if data.get("Volume") is None: data["Volume"] = info.get('volume')
+        except Exception:
+            pass # get_info() can fail, but we can proceed without it
+        # --- END OF NEW LOGIC ---
 
-        # Format the data into a clean, readable string
+        # Validate that we have at least a price; otherwise, the analysis is not useful.
+        if data.get("Current Price") is None:
+            return f"Error: Could not retrieve current price for ticker '{ticker}'. The symbol may be invalid or delisted."
+
+        # Define the desired order and format the data into a clean, readable string
+        key_order = [
+            "Company Name", "Symbol", "Current Price", "Previous Close", "Open",
+            "Day Low", "Day High", "Market Cap", "Trailing P/E", "Forward P/E",
+            "Trailing EPS", "Volume", "52 Week High", "52 Week Low"
+        ]
+        
         report = []
-        for key, value in key_metrics.items():
-            if value is not None:
-                report.append(f"{key}: {value}")
-            else:
-                report.append(f"{key}: N/A")
+        for key in key_order:
+            value = data.get(key)
+            report.append(f"{key}: {value if value is not None else 'N/A'}")
 
         return "\n".join(report)
 
     except Exception as e:
-        # Catch any other exceptions from yfinance or network issues
-        return f"Error: An exception occurred while trying to fetch data for ticker '{ticker}'. Details: {e}"
+        return f"Error: An unexpected exception occurred while fetching data for ticker '{ticker}'. Details: {e}"
 
-# You can keep other tools like scrape_website here if you have them
 @tool
 def scrape_website(url: str) -> str:
     """
