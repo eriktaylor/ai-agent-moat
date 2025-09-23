@@ -96,7 +96,7 @@ with st.sidebar:
 @st.cache_resource
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, google_api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=api_key)
     embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
 
     from langchain_community.tools import DuckDuckGoSearchRun
