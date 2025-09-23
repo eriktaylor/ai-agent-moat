@@ -40,7 +40,6 @@ class ResearchAgent:
 
         source_documents = []
         
-        # --- FIX: Guard against missing search tool ---
         if not self.search_tool:
             print("--- Web search tool not available, skipping web search. ---")
             self.cache[context_cache_key] = (financial_data, source_documents)
@@ -71,7 +70,6 @@ class ResearchAgent:
 
     def _create_rag_chain(self, system_prompt, source_documents):
         if not source_documents:
-             # Handle case where there are no documents to create a vector store from
             def no_rag_chain(input_data):
                 prompt = ChatPromptTemplate.from_template(system_prompt).format(
                     financial_data=input_data.get("financial_data", "N/A"),
@@ -100,19 +98,12 @@ class ResearchAgent:
 
     def _run_analysis(self, entity_name, ticker, system_prompt, query_input):
         financial_data, source_documents = self._get_context(entity_name, ticker)
-        
         rag_chain = self._create_rag_chain(system_prompt, source_documents)
-        
-        response = rag_chain.invoke({
-            "input": query_input,
-            "financial_data": financial_data
-        })
-
-        if isinstance(response, dict): # Standard RAG chain response
+        response = rag_chain.invoke({"input": query_input, "financial_data": financial_data})
+        if isinstance(response, dict):
              return {"answer": response['answer'].content, "sources": response['sources']}
-        else: # Fallback for no_rag_chain
+        else:
              return {"answer": response.content, "sources": []}
-
 
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
@@ -123,7 +114,8 @@ class ResearchAgent:
             "2. **Retail Investor Sentiment:** Based on forum snippets.\n"
             "3. **Valuation Analysis:** Is it expensive or cheap? Reference 'Trailing P/E' and 'Trailing EPS'.\n"
             "**Cite sources with [1], [2] at the end of sentences.**\n\nContext:\n{context_formatted}\n\n"
-            "This is an objective summary, not financial advice."
+            "This is an objective summary, not financial advice. "
+            "Do not insert line breaks inside words or numbers. Keep paragraphs wrapped normally."
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Market outlook for {entity_name}")
 
@@ -135,7 +127,8 @@ class ResearchAgent:
             "1. **Valuation Summary:** State if it's 'Overvalued', 'Undervalued', or 'Fairly Valued', justifying with data.\n"
             "2. **SWOT Analysis:** Bulleted Strengths, Weaknesses, Opportunities, Threats.\n"
             "3. **Competitive Moat:** Describe its long-term advantages.\n"
-            "**Cite sources with [1], [2] at the end of sentences.**\n\nContext:\n{context_formatted}"
+            "**Cite sources with [1], [2] at the end of sentences.**\n\nContext:\n{context_formatted}\n\n"
+            "Do not insert line breaks inside words or numbers. Keep paragraphs wrapped normally."
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Value analysis for {entity_name}")
 
@@ -144,7 +137,8 @@ class ResearchAgent:
         system_prompt = (
             "You are a skeptical 'Devil's Advocate' analyst. Your purpose is to challenge the bullish thesis. Key financial data:\n{financial_data}\n\n" 
             "Using the retrieved context below, identify the single strongest counter-argument or hidden risk in a concise paragraph.\n"
-            "**Cite the source of your information with [1], [2] at the end of the sentence.**\n\nContext:\n{context_formatted}"
+            "**Cite the source of your information with [1], [2] at the end of the sentence.**\n\nContext:\n{context_formatted}\n\n"
+            "Do not insert line breaks inside words or numbers. Keep paragraphs wrapped normally."
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Strongest bearish case against {entity_name}?")
 
@@ -155,12 +149,16 @@ class ResearchAgent:
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
+        # --- FIX: Replaced prompt with a version that includes a clear rubric ---
         system_prompt = (
-            "You are a 'Lead Analyst' synthesizing your team's views for {entity_name}. "
-            "Based on the three reports below, provide a final rating and justification.\n"
-            "Your response MUST have these sections:\n"
-            "1. **Consensus Rating:** A single rating: **Bullish**, **Bearish**, or **Neutral with Caution**.\n"
-            "2. **Summary Justification:** A concise paragraph explaining your rating by weighing the different perspectives.\n\n"
+            "You are a 'Lead Analyst' synthesizing your team's views for {entity_name}.\n"
+            "Return exactly two sections in valid Markdown:\n"
+            "1. **Consensus Rating:** Choose exactly one: **Bullish**, **Bearish**, or **Neutral with Caution**.\n"
+            "   • Choose **Bullish** if BOTH (A) overall sentiment is net positive AND (B) valuation is not clearly overextended.\n"
+            "   • Choose **Bearish** if EITHER (A) major red flags/negative catalysts are present OR (B) valuation is extreme and unsupported.\n"
+            "   • Choose **Neutral with Caution** ONLY if evidence is genuinely mixed or insufficient.\n"
+            "   • If evidence is mixed but slightly positive, prefer **Bullish**; if mixed but slightly negative, prefer **Bearish**.\n"
+            "2. **Summary Justification:** 3–5 sentences, weighing the three views. No line breaks inside words.\n\n"
             "--- ANALYSIS CONTEXT ---\n{analysis_context}"
         )
         prompt = ChatPromptTemplate.from_template(system_prompt)

@@ -1,5 +1,22 @@
 import streamlit as st
 from streamlit_extras.add_vertical_space import add_vertical_space
+import re
+import unicodedata
+
+# --- FIX: Added a helper function to sanitize text before rendering ---
+def _clean_markdown(text: str) -> str:
+    """Normalizes and cleans markdown text to prevent rendering artifacts."""
+    if not isinstance(text, str):
+        return str(text)
+    # Normalize unicode characters
+    s = unicodedata.normalize("NFKC", text)
+    # Replace single-character line breaks that occur inside words/numbers
+    s = re.sub(r'(?<=\w)\n(?=\w)', ' ', s)
+    # Collapse 3 or more newlines into a maximum of 2
+    s = re.sub(r'\n{3,}', '\n\n', s)
+    # Collapse excessive spaces or tabs into a single space
+    s = re.sub(r'[ \t]{2,}', ' ', s)
+    return s.strip()
 
 def display_analysis(title, company_name, result, is_summary=False):
     """
@@ -8,9 +25,11 @@ def display_analysis(title, company_name, result, is_summary=False):
     st.subheader(title)
 
     answer = result if is_summary else result.get('answer', 'No analysis generated.')
+    # --- FIX: Clean the answer text before displaying it ---
+    answer = _clean_markdown(answer)
+    
     sources = result.get('sources', []) if not is_summary else []
 
-    # <<< CHANGE: Removed the redundant text_area, now only markdown is shown >>>
     with st.container(border=True):
         st.markdown(answer)
 
