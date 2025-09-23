@@ -104,7 +104,7 @@ def _safe_embeddings():
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
     os.environ["GOOGLE_API_KEY"] = api_key
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.2, api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=api_key)
     embeddings = _safe_embeddings()
     from langchain_community.tools import DuckDuckGoSearchRun
     search_tool = DuckDuckGoSearchRun()
