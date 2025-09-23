@@ -1,12 +1,11 @@
 # AI Agent for Financial Moat Analysis
 
-This project is an AI-powered agent that automates the initial phase of investment research by analyzing a company's competitive advantages, or "moat."
+This project is an AI-powered agent that automates the initial phase of investment research by analyzing a company's competitive advantages, or "moat." This framework serves as the foundation for a more advanced, private version of the project that operates as a fully autonomous multi-agent system, performing weekly market screening, deep analysis, and portfolio management.
 
 **Project Status: Open-Source Framework**
 
 This public repository contains the open-source (MIT Licensed) framework for the AI Financial Analyst. It is the manually-prompted, query-driven version of the agent, as detailed in the accompanying [Medium article](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4).
 
-This framework serves as the foundation for a more advanced, private version of the project that operates as a fully autonomous multi-agent system, performing weekly market screening, deep analysis, and portfolio management.
 
 
 
