@@ -24,7 +24,7 @@ This RAG architecture is crucial for the agent's reliability. It grounds the LLM
 
 The application is deployed and publicly available on Streamlit Community Cloud.
 
-[Click here to try the Live Application!](https://ai-agent-moat-my2qtkvamd8fckwyznqfky.streamlit.app/)
+[Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
 
 ---
 
