@@ -2,6 +2,12 @@
 
 This project is an AI-powered agent that automates the initial phase of investment research by analyzing a company's competitive advantages, or "moat."
 
+**Project Status: Open-Source Framework**
+This public repository contains the open-source (MIT Licensed) framework for the AI Financial Analyst. It is the manually-prompted, query-driven version of the agent, as detailed in the accompanying [Medium article](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4).
+
+This framework serves as the foundation for a more advanced, private version of the project that operates as a fully autonomous multi-agent system, performing weekly market screening, deep analysis, and portfolio management.
+
+
 ## Business Objective
 
 Strategic analysis of a company's competitive advantages, or 'moat,' is a cornerstone of investment research. This process is traditionally manual and time-consuming, requiring analysts to sift through disparate sources like financial reports, news articles, and press releases. This project automates the intelligence-gathering and synthesis phase of this critical task, delivering a comprehensive analysis in minutes.
@@ -96,11 +102,6 @@ Once the notebook is open, follow the detailed instructions in Step 1 of the not
 
 3. **Run the Analysis**:
 Execute the cells in the notebook. The final cell will prompt you for a company name and stock ticker to begin the analysis.
-
-## Further Reading & Technical Deep Dive
-For a more detailed, step-by-step tutorial on the technical implementation, architectural decisions, and code snippets from this project, please see the full write-up on Medium:
-
-[Building a Multi-Tool RAG Agent for Financial Analysis](https://medium.com/digital-mind/building-a-multi-tool-rag-agent-for-financial-analysis-6d4e667546a4)
 
 ## Disclaimer
 The content and analysis provided by this AI agent are for informational and educational purposes only and should not be construed as financial advice, investment recommendations, or an offer or solicitation to buy or sell any securities. All investment decisions should be made with the guidance of a qualified financial professional.
