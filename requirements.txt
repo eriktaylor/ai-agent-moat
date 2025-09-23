@@ -9,7 +9,7 @@ beautifulsoup4
 transformers
 sentence-transformers
 PyMuPDF
-duckduckgo-search>=5.0.0
+ddgs
 streamlit>=1.33.0
 streamlit-extras
 requests
