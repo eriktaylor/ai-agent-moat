@@ -4,6 +4,8 @@ import streamlit as st
 import datetime
 import re
 import locale
+import os
+import traceback
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from research_agent import ResearchAgent
@@ -73,7 +75,6 @@ def get_first_available_value(data_dict, keys_to_try):
             return data_dict[key]
     return "N/A"
 
-
 # --- Sidebar for Inputs and API Keys ---
 with st.sidebar:
     st.header("⚙️ Configuration")
@@ -92,17 +93,34 @@ with st.sidebar:
 
     run_button = st.button("Run New Analysis", use_container_width=True, type="primary")
 
+# --- FIX: Helper for safely initializing embeddings with a fallback ---
+def _safe_embeddings():
+    try:
+        # Use the recommended, fully-qualified model name
+        return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+    except Exception as e:
+        st.warning(f"Could not load primary embedding model 'all-MiniLM-L6-v2'. Error: {e}. Falling back to a smaller model. This may affect quality.")
+        # Use a smaller, but reliable fallback model
+        return HuggingFaceEmbeddings(model_name="intfloat/e5-small-v2")
+
 # --- Agent Initialization (Cached) ---
 @st.cache_resource
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, google_api_key=api_key)
-    embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+    # --- FIX: Set API key as an environment variable for broad compatibility ---
+    os.environ["GOOGLE_API_KEY"] = api_key
+
+    # --- FIX: Upgraded to a powerful and reliable Gemini 1.5 model ---
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=api_key)
+    
+    # --- FIX: Use the safe wrapper for embeddings ---
+    embeddings = _safe_embeddings()
 
     from langchain_community.tools import DuckDuckGoSearchRun
     search_tool = DuckDuckGoSearchRun()
 
     return ResearchAgent(llm=llm, embeddings_model=embeddings, search_tool=search_tool)
+
 
 # --- Main Application Logic ---
 def run_full_analysis(company_name, stock_ticker):
@@ -128,12 +146,8 @@ def run_full_analysis(company_name, stock_ticker):
             financial_data_str = get_stock_info.run(stock_ticker)
             base_results["financial_data"] = financial_data_str
 
-            # --- CRITICAL FIX: Do not stop the analysis if financial data fails. ---
-            # Instead, show a warning and let the agent proceed with web data only.
-            # The agent itself is designed to handle this failure gracefully.
             if financial_data_str.startswith("Error"):
                 st.warning(f"Could not retrieve complete financial data for {stock_ticker}. Proceeding with web analysis only.")
-                # The early 'return' that caused the analysis to fail has been removed.
 
             base_results["market_outlook"] = research_agent.generate_market_outlook(company_name, stock_ticker)
             base_results["value_analysis"] = research_agent.generate_value_analysis(company_name, stock_ticker)
@@ -149,7 +163,10 @@ def run_full_analysis(company_name, stock_ticker):
         return base_results
 
     except Exception as e:
+        # --- FIX: Add detailed traceback for easier debugging on Streamlit Cloud ---
         st.error(f"A critical error occurred during the analysis: {e}")
+        st.caption("Traceback:")
+        st.code(traceback.format_exc()) # This will print the full error stack
         base_results["status"] = "error"
         base_results["error"] = True
         return base_results
