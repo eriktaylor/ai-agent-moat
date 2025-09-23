@@ -88,7 +88,7 @@ def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
     os.environ["GOOGLE_API_KEY"] = api_key
     # Using gemini-2.5-flash per your suggestion
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, api_key=api_key)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=api_key)
     embeddings = _safe_embeddings()
 
     # --- FIX: Make search tool initialization fail-soft ---
