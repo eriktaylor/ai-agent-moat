@@ -24,9 +24,12 @@ A key challenge with Large Language Models is that their knowledge is frozen at 
 
 This RAG architecture is crucial for the agent's reliability. It grounds the LLM's powerful reasoning capabilities in real-time, verifiable facts, significantly reducing the risk of generating outdated or inaccurate information.
 
+
 ## Live Demo (Streamlit)
 
-The application is deployed and publicly available on Streamlit Community Cloud.
+The application is deployed and publicly available on Streamlit Community Cloud. This version represents the **most up-to-date and user-friendly implementation** of the agent.
+
+A key difference in this version is its use of **DuckDuckGo for web searches**, which allows the application to run with only a single API key (for Google Gemini). This was a deliberate design choice to make the demo more accessible compared to the Google Colab version, which requires a second key for the Google Custom Search API. Because the search backend is different, the resulting analysis may vary slightly between the two versions.
 
 [Click here to try the Live Application!](https://ai-agent-moat.streamlit.app/)
 
@@ -34,7 +37,13 @@ The application is deployed and publicly available on Streamlit Community Cloud.
 
 ## Project Evolution
 
-**Most Recent Update (July 23, 2025)**:
+**Most Recent Update (September 23, 2025)**:
+
+* Fixed critical bugs with Yahoo Finance data fetching and key dependencies, significantly improving application stability.
+
+* Improved AI analysis quality by refining prompts for more decisive ratings and fixing text formatting errors.
+
+**Update (July 23, 2025)**:
 
 * Added **Streamlit Community Cloud** deployment of agent.
 
