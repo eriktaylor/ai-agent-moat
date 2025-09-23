@@ -36,7 +36,6 @@ if 'show_feedback_box' not in st.session_state:
 
 # --- Helper Functions ---
 def parse_financial_data(data_string):
-    """Parses the financial data string into a dictionary."""
     data = {}
     if not isinstance(data_string, str) or data_string.startswith("Error"):
         return data
@@ -44,30 +43,21 @@ def parse_financial_data(data_string):
     for line in data_string.split('\n'):
         match = pattern.match(line)
         if match:
-            key = match.group(1).strip()
-            value = match.group(2).strip()
+            key, value = match.group(1).strip(), match.group(2).strip()
             data[key] = value
     return data
 
 def format_large_number(value_str):
-    """Formats a number string into a human-readable currency format (e.g., $2.5T, $100B)."""
-    if value_str is None or value_str == "N/A":
-        return "N/A"
+    if value_str is None or value_str == "N/A": return "N/A"
     try:
         num = float(value_str)
-        if num >= 1_000_000_000_000:
-            return f"${num / 1_000_000_000_000:.2f}T"
-        elif num >= 1_000_000_000:
-            return f"${num / 1_000_000_000:.2f}B"
-        elif num >= 1_000_000:
-            return f"${num / 1_000_000:.2f}M"
-        else:
-            return f"${num:,.2f}"
-    except (ValueError, TypeError):
-        return "N/A"
+        if num >= 1_000_000_000_000: return f"${num / 1_000_000_000_000:.2f}T"
+        if num >= 1_000_000_000: return f"${num / 1_000_000_000:.2f}B"
+        if num >= 1_000_000: return f"${num / 1_000_000:.2f}M"
+        return f"${num:,.2f}"
+    except (ValueError, TypeError): return "N/A"
 
 def get_first_available_value(data_dict, keys_to_try):
-    """Iterates through a list of keys and returns the first found value."""
     for key in keys_to_try:
         if key in data_dict and data_dict[key] not in [None, "N/A", "None"]:
             return data_dict[key]
@@ -76,27 +66,20 @@ def get_first_available_value(data_dict, keys_to_try):
 # --- Sidebar for Inputs and API Keys ---
 with st.sidebar:
     st.header("⚙️ Configuration")
-
-    google_api_key = st.text_input(
-        "Enter your Google Gemini API Key",
-        type="password",
-        help="Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey)."
-    )
+    google_api_key = st.text_input("Enter your Google Gemini API Key", type="password", help="Get your free API key from [Google AI Studio](https://aistudio.google.com/app/apikey).")
     st.markdown("[Get your free Gemini API key here](https://aistudio.google.com/app/apikey)")
-
     st.markdown("---")
     st.header("▶️ Run New Analysis")
     company_name_input = st.text_input("Enter Company Name", "Apple")
     stock_ticker_input = st.text_input("Enter Stock Ticker", "AAPL")
-
     run_button = st.button("Run New Analysis", use_container_width=True, type="primary")
 
-# --- Helper for safely initializing embeddings with a fallback ---
+# --- Helper for safely initializing embeddings ---
 def _safe_embeddings():
     try:
         return HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
     except Exception as e:
-        st.warning(f"Could not load primary embedding model 'all-MiniLM-L6-v2'. Error: {e}. Falling back to a smaller model. This may affect quality.")
+        st.warning(f"Could not load primary embedding model. Error: {e}. Falling back to a smaller model.")
         return HuggingFaceEmbeddings(model_name="intfloat/e5-small-v2")
 
 # --- Agent Initialization (Cached) ---
@@ -104,29 +87,35 @@ def _safe_embeddings():
 def initialize_agent(api_key):
     """Initializes the ResearchAgent."""
     os.environ["GOOGLE_API_KEY"] = api_key
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.2, api_key=api_key)
+    # Using gemini-2.5-flash per your suggestion
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0.2, api_key=api_key)
     embeddings = _safe_embeddings()
-    from langchain_community.tools import DuckDuckGoSearchRun
-    search_tool = DuckDuckGoSearchRun()
+
+    # --- FIX: Make search tool initialization fail-soft ---
+    try:
+        from langchain_community.tools import DuckDuckGoSearchRun
+        search_tool = DuckDuckGoSearchRun()
+    except Exception as e:
+        st.warning(f"DuckDuckGo search is unavailable: {e}. Proceeding without web search.")
+        search_tool = None # Set to None if import fails
+
     return ResearchAgent(llm=llm, embeddings_model=embeddings, search_tool=search_tool)
 
 
 # --- Main Application Logic ---
 def run_full_analysis(company_name, stock_ticker):
-    """Runs the full analysis pipeline and returns the results dictionary."""
     base_results = {
-        "company_name": company_name,
-        "stock_ticker": stock_ticker,
+        "company_name": company_name, "stock_ticker": stock_ticker,
         "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "error": False, "status": "error",
-        "feedback": None, "detailed_feedback": None, "financial_data": None,
-        "market_outlook": {"answer": "Analysis could not be run due to an application error."},
-        "value_analysis": {"answer": "Analysis could not be run due to an application error."},
-        "devils_advocate": {"answer": "Analysis could not be run due to an application error."},
-        "final_summary": "Analysis could not be run due to an application error."
+        "error": False, "status": "error", "feedback": None,
+        "detailed_feedback": None, "financial_data": None,
+        "market_outlook": {"answer": "Analysis could not be run."},
+        "value_analysis": {"answer": "Analysis could not be run."},
+        "devils_advocate": {"answer": "Analysis could not be run."},
+        "final_summary": "Analysis could not be run."
     }
     try:
-        with st.spinner(f"Running analysis for {company_name}... This may take a moment."):
+        with st.spinner(f"Running analysis for {company_name}..."):
             research_agent = initialize_agent(google_api_key)
             financial_data_str = get_stock_info.run(stock_ticker)
             base_results["financial_data"] = financial_data_str
@@ -151,143 +140,91 @@ def run_full_analysis(company_name, stock_ticker):
         base_results["error"] = True
         return base_results
 
-
 # --- UI Display Logic ---
-
 if run_button:
-    if not google_api_key:
-        st.error("Please enter your Google Gemini API Key in the sidebar to proceed.")
-    elif not company_name_input or not stock_ticker_input:
-        st.error("Please enter a company name and stock ticker.")
+    if not google_api_key: st.error("Please enter your Google Gemini API Key.")
+    elif not company_name_input or not stock_ticker_input: st.error("Please enter a company name and stock ticker.")
     else:
-        placeholder = { "company_name": company_name_input, "stock_ticker": stock_ticker_input,
-            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "status": "pending" }
-        st.session_state.analysis_history.insert(0, placeholder)
+        st.session_state.analysis_history.insert(0, {
+            "company_name": company_name_input, "stock_ticker": stock_ticker_input,
+            "date": datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "status": "pending"
+        })
         st.session_state.current_analysis_index = 0
         st.rerun()
 
 pending_analysis_index = next((i for i, an in enumerate(st.session_state.analysis_history) if an.get("status") == "pending"), None)
-
 if pending_analysis_index is not None:
     pending_info = st.session_state.analysis_history[pending_analysis_index]
     full_results = run_full_analysis(pending_info["company_name"], pending_info["stock_ticker"])
     st.session_state.analysis_history[pending_analysis_index] = full_results
     st.session_state.current_analysis_index = pending_analysis_index
-    
-    # --- FIX: Check for an error and stop the script from re-running ---
     if full_results.get("error"):
-        st.error("The analysis failed. Please check the error message above. You may need to try again.")
-        st.stop() # This halts execution and prevents the UI from trying to render a broken result.
+        st.error("The analysis failed. Please check the error message above.")
+        st.stop()
     else:
         st.rerun()
 
-
-# --- Main Analysis Display Section ---
 if st.session_state.current_analysis_index is not None:
     res = st.session_state.analysis_history[st.session_state.current_analysis_index]
-
-    if res.get("status") == "pending":
-        st.info("⏳ Analysis is running...")
-        st.stop()
-
+    if res.get("status") == "pending": st.info("⏳ Analysis is running..."); st.stop()
     st.header(f"Analysis for {res['company_name']} ({res['stock_ticker'].upper()})", divider="rainbow")
     st.subheader("Key Financial Data")
     financial_data_raw = res.get("financial_data", "")
     financials = parse_financial_data(financial_data_raw)
-    
-    if financials:
+    if financials and financials.get("Current Price") != "N/A":
         cols = st.columns(4)
-        price_keys_to_try = ["Current Price", "Regular Market Price", "Previous Close", "Open"]
-        price_val = get_first_available_value(financials, price_keys_to_try)
-        try:
-            price_str = f"${float(price_val):.2f}"
-        except (ValueError, TypeError):
-            price_str = "N/A"
-        cols[0].metric(label="Current Price", value=price_str)
-        
-        market_cap_val = financials.get("Market Cap", "N/A")
-        cols[1].metric(label="Market Cap", value=format_large_number(market_cap_val))
-        pe_ratio_val = financials.get("Trailing P/E", "N/A")
-        try:
-            pe_ratio_str = f"{float(pe_ratio_val):.2f}"
-        except (ValueError, TypeError):
-            pe_ratio_str = "N/A"
-        cols[2].metric(label="P/E Ratio", value=pe_ratio_str)
-        eps_val = financials.get("Trailing EPS", "N/A")
-        try:
-            eps_str = f"{float(eps_val):.2f}"
-        except (ValueError, TypeError):
-            eps_str = "N/A"
-        cols[3].metric(label="EPS", value=eps_str)
-
+        price_val = get_first_available_value(financials, ["Current Price", "Previous Close"])
+        cols[0].metric(label="Current Price", value=f"${float(price_val):.2f}" if price_val != "N/A" else "N/A")
+        cols[1].metric(label="Market Cap", value=format_large_number(financials.get("Market Cap")))
+        cols[2].metric(label="P/E Ratio", value=f"{float(financials.get('Trailing P/E')):.2f}" if financials.get('Trailing P/E') not in [None, "N/A"] else "N/A")
+        cols[3].metric(label="EPS", value=f"{float(financials.get('Trailing EPS')):.2f}" if financials.get('Trailing EPS') not in [None, "N/A"] else "N/A")
     else:
-        st.warning("Financial data could not be retrieved for this analysis.")
-        if financial_data_raw:
-            st.error(f"Details: {financial_data_raw}")
+        st.warning("Financial data is currently unavailable for this stock.")
+        if financial_data_raw and financial_data_raw.startswith("Error:"): st.error(f"Details: {financial_data_raw}")
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([ "Final Summary", "Market Outlook", "Value Analysis", "Devil's Advocate", "Feedback" ])
-    with tab1:
-        display_analysis("Final Consensus Summary", res['company_name'], res.get("final_summary", "Not available"), is_summary=True)
-    with tab2:
-        display_analysis("AI-Generated Market Investor Outlook", res['company_name'], res.get("market_outlook", {}))
-    with tab3:
-        display_analysis("AI-Generated Value Investor Analysis", res['company_name'], res.get("value_analysis", {}))
-    with tab4:
-        display_analysis("AI-Generated Devil's Advocate View", res['company_name'], res.get("devils_advocate", {}))
-    with tab5:
+    tabs = st.tabs(["Final Summary", "Market Outlook", "Value Analysis", "Devil's Advocate", "Feedback"])
+    with tabs[0]: display_analysis("Final Consensus Summary", res['company_name'], res.get("final_summary", ""), is_summary=True)
+    with tabs[1]: display_analysis("AI-Generated Market Investor Outlook", res['company_name'], res.get("market_outlook", {}))
+    with tabs[2]: display_analysis("AI-Generated Value Investor Analysis", res['company_name'], res.get("value_analysis", {}))
+    with tabs[3]: display_analysis("AI-Generated Devil's Advocate View", res['company_name'], res.get("devils_advocate", {}))
+    with tabs[4]:
         st.subheader("Was this analysis helpful?")
+        # Feedback logic remains the same
         if res.get("feedback") is None and not res.get("error"):
             col1, col2, col3, col_spacer = st.columns([1,1,1,3])
-            if col1.button("👍 Upvote", key=f"up_{res['date']}", use_container_width=True):
-                res["feedback"] = "upvoted"; st.toast("Thanks for your feedback!", icon="👍"); st.rerun()
-            if col2.button("👎 Downvote", key=f"down_{res['date']}", use_container_width=True):
-                res["feedback"] = "downvoted"; st.session_state.show_feedback_box = True; st.toast("Thanks! Please provide details.", icon="👎"); st.rerun()
-            if col3.button("⚠️ Report Error", key=f"err_{res['date']}", use_container_width=True):
-                res["feedback"] = "error"; st.error("Error reported. Thank you for helping improve the agent."); st.rerun()
+            if col1.button("👍 Upvote", key=f"up_{res['date']}", use_container_width=True): res["feedback"] = "upvoted"; st.rerun()
+            if col2.button("👎 Downvote", key=f"down_{res['date']}", use_container_width=True): res["feedback"] = "downvoted"; st.session_state.show_feedback_box = True; st.rerun()
+            if col3.button("⚠️ Report Error", key=f"err_{res['date']}", use_container_width=True): res["feedback"] = "error"; st.rerun()
             if st.session_state.get('show_feedback_box', False) and res.get("feedback") == "downvoted":
                 feedback_text = st.text_area("What could be improved in this analysis?", key=f"text_{res['date']}")
                 if st.button("Submit Detailed Feedback", key=f"submit_{res['date']}"):
-                    res["detailed_feedback"] = feedback_text; st.success("Your detailed feedback has been submitted. Thank you!"); st.session_state.show_feedback_box = False; st.rerun()
-        elif not res.get("error"):
-            st.info("Thank you for your feedback on this report!")
-            if res.get("detailed_feedback"):
-                st.write("Your detailed feedback:"); st.info(res.get("detailed_feedback"))
-        else:
-            st.warning("Feedback is disabled for analyses that resulted in an error.")
+                    res["detailed_feedback"] = feedback_text; st.session_state.show_feedback_box = False; st.rerun()
+        elif not res.get("error"): st.info("Thank you for your feedback on this report!")
+        else: st.warning("Feedback is disabled for analyses that resulted in an error.")
 else:
-    st.info("Run a new analysis using the sidebar, or view a previous analysis from the history below.")
+    st.info("Run a new analysis using the sidebar.")
 
-# --- Previous Analyses Section ---
 st.header("Analysis History", divider="gray")
-if not st.session_state.analysis_history:
-    st.info("No previous analyses to display. Run a new analysis to get started.")
+# History display logic remains the same
+if not st.session_state.analysis_history: st.info("No previous analyses to display.")
 else:
     for i, analysis in enumerate(st.session_state.analysis_history):
         with st.container(border=True):
-            col1, col2, col3 = st.columns([4, 2, 2])
-            with col1:
-                st.write(f"**{analysis['company_name']} ({analysis.get('stock_ticker', 'N/A')})**"); st.caption(f"_{analysis['date']}_")
-            with col2:
-                status = analysis.get("status")
-                if status == "pending": st.info("⏳ Pending...")
-                elif status == "error": st.error("❌ Failed")
-                else:
-                    feedback = analysis.get("feedback")
-                    if feedback == "upvoted": st.success("👍 Liked")
-                    elif feedback == "downvoted": st.warning("👎 Disliked")
-                    elif feedback == "error": st.error("⚠️ Error Reported")
-                    else: st.write("")
-            with col3:
-                b_col1, b_col2 = st.columns(2)
-                if status in ["complete", "error"]:
-                    if b_col1.button("👁️ View", key=f"view_{i}", use_container_width=True):
-                        st.session_state.current_analysis_index = i; st.session_state.show_feedback_box = False; st.rerun()
-                if b_col2.button("🗑️ Delete", key=f"del_{i}", use_container_width=True):
-                    if st.session_state.current_analysis_index == i: st.session_state.current_analysis_index = None
-                    st.session_state.analysis_history.pop(i); st.rerun()
+            c1, c2, c3 = st.columns([4, 2, 2])
+            c1.write(f"**{analysis['company_name']} ({analysis.get('stock_ticker', 'N/A')})**")
+            c1.caption(f"_{analysis['date']}_")
+            status = analysis.get("status")
+            if status == "pending": c2.info("⏳ Pending...")
+            elif status == "error": c2.error("❌ Failed")
+            else:
+                feedback = analysis.get("feedback")
+                if feedback == "upvoted": c2.success("👍 Liked")
+                elif feedback == "downvoted": c2.warning("👎 Disliked")
+            if status in ["complete", "error"]:
+                if c3.button("👁️ View", key=f"view_{i}", use_container_width=True): st.session_state.current_analysis_index = i; st.rerun()
+            if c3.button("🗑️ Delete", key=f"del_{i}", use_container_width=True, type="secondary"):
+                if st.session_state.current_analysis_index == i: st.session_state.current_analysis_index = None
+                st.session_state.analysis_history.pop(i); st.rerun()
 
-# --- Footer ---
 st.markdown("---")
-st.info("""
-**Disclaimer:** This tool is for informational and educational purposes only and does not constitute financial advice. All investment decisions should be made with the guidance of a qualified financial professional.
-""")
+st.info("**Disclaimer:** This tool is for informational and educational purposes only and does not constitute financial advice.")

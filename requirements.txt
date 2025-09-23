@@ -13,3 +13,4 @@ ddgs
 streamlit>=1.33.0
 streamlit-extras
 requests
+curl_cffi

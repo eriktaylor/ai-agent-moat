@@ -31,16 +31,21 @@ class ResearchAgent:
             print("Returning cached context.")
             return self.cache[context_cache_key]
 
-        financial_data = "No financial data available."
-        if ticker:
-            print(f"--- Getting Financial Data for {ticker} ---")
-            financial_data_result = get_stock_info.run(ticker)
-            if not financial_data_result.startswith("Error"):
-                financial_data = financial_data_result
-                print("Successfully collected financial data.")
+        financial_data_result = get_stock_info.run(ticker)
+        if financial_data_result.startswith("Error"):
+            financial_data = "Financial data is currently unavailable."
+        else:
+            financial_data = financial_data_result
+            print("Successfully collected financial data.")
 
         source_documents = []
         
+        # --- FIX: Guard against missing search tool ---
+        if not self.search_tool:
+            print("--- Web search tool not available, skipping web search. ---")
+            self.cache[context_cache_key] = (financial_data, source_documents)
+            return financial_data, source_documents
+
         queries = {
             "Official News & Analysis": f'"{entity_name}" recent news',
             "Critical News & Sentiment": f'\"{entity_name}\" issues OR concerns OR investigation OR recall OR safety OR "short interest"',
@@ -49,41 +54,38 @@ class ResearchAgent:
 
         for tier, query in queries.items():
             print(f"--- Searching for: {tier} ---")
-            # <<< BUG FIX: Wrapped web search in a try/except block for resilience >>>
             try:
                 search_result_text = self.search_tool.run(query)
-                
                 if search_result_text and "No good search result found" not in search_result_text:
-                    doc = Document(
-                        page_content=search_result_text,
-                        metadata={
-                            "source": "DuckDuckGo Search", 
-                            "title": f"{tier} for {entity_name}",
-                            "published": "N/A"
-                        }
-                    )
+                    doc = Document(page_content=search_result_text, metadata={"source": "DuckDuckGo Search", "title": f"{tier} for {entity_name}"})
                     source_documents.append(doc)
                     print(f"Collected results for {tier}.")
                 else:
                     print(f"No good search results for {tier}.")
             except Exception as e:
                 print(f"An error occurred during web search for tier '{tier}': {e}")
-                # Continue to the next query even if one fails
                 continue
         
         self.cache[context_cache_key] = (financial_data, source_documents)
         return financial_data, source_documents
 
     def _create_rag_chain(self, system_prompt, source_documents):
+        if not source_documents:
+             # Handle case where there are no documents to create a vector store from
+            def no_rag_chain(input_data):
+                prompt = ChatPromptTemplate.from_template(system_prompt).format(
+                    financial_data=input_data.get("financial_data", "N/A"),
+                    context_formatted="No web context was available for this analysis."
+                )
+                response = self.llm.invoke(prompt)
+                return {"answer": response, "sources": []}
+            return no_rag_chain
+
         vector_store = FAISS.from_documents(documents=source_documents, embedding=self.embeddings_model)
         retriever = vector_store.as_retriever()
 
         def format_docs_with_citations(docs):
-            formatted_docs = []
-            for i, doc in enumerate(docs):
-                doc_string = f"[Source {i+1}]: Title: {doc.metadata.get('title', 'N/A')}\nContent: {doc.page_content}"
-                formatted_docs.append(doc_string)
-            return "\n\n".join(formatted_docs)
+            return "\n\n".join([f"[Source {i+1}]: Title: {doc.metadata.get('title', 'N/A')}\nContent: {doc.page_content}" for i, doc in enumerate(docs)])
 
         rag_chain = (
             {
@@ -91,100 +93,77 @@ class ResearchAgent:
                 "input": itemgetter("input"),
                 "financial_data": itemgetter("financial_data"),
             }
-            | RunnablePassthrough.assign(
-                context_formatted=lambda x: format_docs_with_citations(x["context_docs"])
-            )
-            | {
-                "answer": (
-                    ChatPromptTemplate.from_template(system_prompt)
-                    | self.llm
-                ),
-                "sources": itemgetter("context_docs"),
-            }
+            | RunnablePassthrough.assign(context_formatted=lambda x: format_docs_with_citations(x["context_docs"]))
+            | { "answer": ChatPromptTemplate.from_template(system_prompt) | self.llm, "sources": itemgetter("context_docs") }
         )
         return rag_chain
 
     def _run_analysis(self, entity_name, ticker, system_prompt, query_input):
         financial_data, source_documents = self._get_context(entity_name, ticker)
-        if not source_documents:
-            return {"answer": "Could not gather sufficient web context for analysis. Please try again.", "sources": []}
-
+        
         rag_chain = self._create_rag_chain(system_prompt, source_documents)
         
         response = rag_chain.invoke({
             "input": query_input,
             "financial_data": financial_data
         })
-        
-        return {"answer": response['answer'].content, "sources": response['sources']}
+
+        if isinstance(response, dict): # Standard RAG chain response
+             return {"answer": response['answer'].content, "sources": response['sources']}
+        else: # Fallback for no_rag_chain
+             return {"answer": response.content, "sources": []}
+
 
     def generate_market_outlook(self, entity_name, ticker):
         print("\nGenerating Market Investor Outlook...")
         system_prompt = (
-            "You are a 'Market Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, generate a report. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
-            "The report MUST be structured with the following sections:\n"
-            "1. **Professional Market Sentiment:** Based on official news and critical reports, what is the professional sentiment?\n"
-            "2. **Retail Investor Sentiment:** Based on 'Retail Forum' snippets, what is the general sentiment from retail investors?\n"
-            "3. **Valuation Analysis:** Is the stock expensive or cheap? You MUST reference 'Trailing P/E' and 'Trailing EPS' from the financial data. If P/E is not applicable, state this clearly.\n"
-            "**Crucially, you MUST cite your sources for any claims made by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
-            "\n\nRetrieved Context:\n{context_formatted}\n\n"
-            "DO NOT give financial advice. This is an objective summary."
+            "You are a 'Market Investor' analyst. Key financial data:\n{financial_data}\n\n" 
+            "Using the retrieved context below, generate a report with these sections:\n"
+            "1. **Professional Market Sentiment:** Based on official news/reports.\n"
+            "2. **Retail Investor Sentiment:** Based on forum snippets.\n"
+            "3. **Valuation Analysis:** Is it expensive or cheap? Reference 'Trailing P/E' and 'Trailing EPS'.\n"
+            "**Cite sources with [1], [2] at the end of sentences.**\n\nContext:\n{context_formatted}\n\n"
+            "This is an objective summary, not financial advice."
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Market outlook for {entity_name}")
 
     def generate_value_analysis(self, entity_name, ticker):
         print("\nGenerating Value Investor Analysis...")
         system_prompt = (
-            "You are a 'Value Investor' analyst. Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, generate a detailed business brief. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
-            "The report MUST be structured with the following sections:\n"
-            "1. **Valuation Summary:** Start by stating if the company appears 'Overvalued', 'Undervalued', or 'Fairly Valued', justifying your conclusion with financial data.\n"
-            "2. **SWOT Analysis:** A detailed, bulleted list of the company's Strengths, Weaknesses, Opportunities, and Threats.\n"
-            "3. **Competitive Moat:** Based on the SWOT analysis, describe the company's long-term competitive advantages.\n"
-            "**Crucially, you MUST cite your sources for any claims made by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
-            "\n\nRetrieved Context:\n{context_formatted}"
+            "You are a 'Value Investor' analyst. Key financial data:\n{financial_data}\n\n" 
+            "Using the retrieved context below, generate a business brief with these sections:\n"
+            "1. **Valuation Summary:** State if it's 'Overvalued', 'Undervalued', or 'Fairly Valued', justifying with data.\n"
+            "2. **SWOT Analysis:** Bulleted Strengths, Weaknesses, Opportunities, Threats.\n"
+            "3. **Competitive Moat:** Describe its long-term advantages.\n"
+            "**Cite sources with [1], [2] at the end of sentences.**\n\nContext:\n{context_formatted}"
         )
         return self._run_analysis(entity_name, ticker, system_prompt, f"Value analysis for {entity_name}")
 
     def generate_devils_advocate_view(self, entity_name, ticker):
         print("\nGenerating Devil's Advocate View...")
         system_prompt = (
-            "You are a skeptical 'Devil's Advocate' financial analyst. Your sole purpose is to challenge the bullish investment thesis. "
-            "Here is the key financial data for the company:\n{financial_data}\n\n" 
-            "Now, using the retrieved context below, identify the single strongest counter-argument or hidden risk. The context is a list of documents, each prefixed with a citation number (e.g., [Source 1]). "
-            "Your response must be a concise, well-reasoned paragraph. "
-            "**You MUST cite the source of the information you use by adding the citation number (e.g., [1], [2]) at the end of the sentence.**"
-            "\n\nRetrieved Context:\n{context_formatted}"
+            "You are a skeptical 'Devil's Advocate' analyst. Your purpose is to challenge the bullish thesis. Key financial data:\n{financial_data}\n\n" 
+            "Using the retrieved context below, identify the single strongest counter-argument or hidden risk in a concise paragraph.\n"
+            "**Cite the source of your information with [1], [2] at the end of the sentence.**\n\nContext:\n{context_formatted}"
         )
-        return self._run_analysis(entity_name, ticker, system_prompt, f"What is the strongest bearish case against {entity_name}?")
+        return self._run_analysis(entity_name, ticker, system_prompt, f"Strongest bearish case against {entity_name}?")
 
     def generate_final_summary(self, entity_name, market_outlook, value_analysis, devils_advocate):
         print("\nGenerating Final Consensus Summary...")
-        
         combined_analysis = (
             f"--- Market Investor Outlook ---\n{market_outlook}\n\n"
             f"--- Value Investor Analysis ---\n{value_analysis}\n\n"
             f"--- Devil's Advocate View ---\n{devils_advocate}"
         )
-        
-        system_prompt_template = (
-            "You are a 'Lead Analyst' responsible for synthesizing the views of your team into a final investment rating for {entity_name}. "
-            "You have been provided with three reports below, which constitute the analysis context. "
-            "Your task is to synthesize these three perspectives into a final, balanced summary. "
-            "Your response MUST be structured with the following sections:\n"
-            "1. **Consensus Rating:** Provide a single rating for {entity_name}: **Bullish**, **Bearish**, or **Neutral with Caution**. \n"
-            "2. **Summary Justification:** In a concise paragraph, explain your rating by summarizing how you weighed the different perspectives for {entity_name}.\n\n"
-            "--- ANALYSIS CONTEXT ---\n"
-            "{analysis_context}"
+        system_prompt = (
+            "You are a 'Lead Analyst' synthesizing your team's views for {entity_name}. "
+            "Based on the three reports below, provide a final rating and justification.\n"
+            "Your response MUST have these sections:\n"
+            "1. **Consensus Rating:** A single rating: **Bullish**, **Bearish**, or **Neutral with Caution**.\n"
+            "2. **Summary Justification:** A concise paragraph explaining your rating by weighing the different perspectives.\n\n"
+            "--- ANALYSIS CONTEXT ---\n{analysis_context}"
         )
-        
-        prompt = ChatPromptTemplate.from_template(system_prompt_template)
-        
+        prompt = ChatPromptTemplate.from_template(system_prompt)
         chain = prompt | self.llm
-        
-        response = chain.invoke({
-            "entity_name": entity_name,
-            "analysis_context": combined_analysis
-        })
+        response = chain.invoke({"entity_name": entity_name, "analysis_context": combined_analysis})
         return response.content

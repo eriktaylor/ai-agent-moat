@@ -1,49 +1,55 @@
-# tools.py
-
 import yfinance as yf
 from langchain.tools import tool
-import requests
+import requests  # Keep for potential future use, but not for yfinance session
 
 @tool
 def get_stock_info(ticker: str) -> str:
     """
     Fetches key financial information for a given stock ticker using the yfinance library.
-    Uses a multi-step fallback approach to ensure robustness against API changes.
-    Returns a formatted string of the data or an error message if critical data is unavailable.
+    Uses a multi-step, resilient fallback approach and handles different key casings.
+    Returns a formatted string of the data, using 'N/A' for unavailable metrics.
     """
     try:
-        session = requests.Session()
-        session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36'
-        })
-        
-        stock = yf.Ticker(ticker, session=session)
-        
-        # --- NEW ROBUST DATA FETCHING LOGIC ---
+        # --- FIX: Do not pass a session. Let yfinance handle it with curl_cffi. ---
+        stock = yf.Ticker(ticker)
+
         data = {}
+        fi = getattr(stock, "fast_info", {}) or {}
 
-        # 1. Use fast_info for the most critical, real-time data
-        fi = getattr(stock, "fast_info", {})
-        data["Current Price"] = fi.get("lastPrice")
-        data["Previous Close"] = fi.get("previousClose")
-        data["Open"] = fi.get("open")
-        data["Day Low"] = fi.get("dayLow")
-        data["Day High"] = fi.get("dayHigh")
-        data["Volume"] = fi.get("volume")
-        data["Market Cap"] = fi.get("marketCap")
+        # --- FIX: Helper function to gracefully handle snake_case and camelCase keys ---
+        def pick(*keys):
+            for k in keys:
+                v = fi.get(k)
+                if v is not None:
+                    return v
+            return None
 
-        # 2. Use history() as a fallback for price if fast_info fails
+        data["Current Price"]  = pick("last_price", "lastPrice")
+        data["Previous Close"] = pick("previous_close", "previousClose")
+        data["Open"]           = pick("open", "regularMarketOpen")
+        data["Day Low"]        = pick("day_low", "dayLow")
+        data["Day High"]       = pick("day_high", "dayHigh")
+        data["Volume"]         = pick("last_volume", "volume")
+        data["Market Cap"]     = pick("market_cap", "marketCap")
+
+        # --- FIX: Broader, safer history fallback ---
         if data.get("Current Price") is None:
             try:
-                hist = stock.history(period="1d")
+                hist = stock.history(period="5d")
                 if not hist.empty:
-                    data["Current Price"] = float(hist["Close"].iloc[-1])
-                    if data.get("Open") is None:
-                         data["Open"] = float(hist["Open"].iloc[-1])
+                    close = hist["Close"].dropna()
+                    if not close.empty:
+                        data["Current Price"] = float(close.iloc[-1])
+                    if data.get("Open") is None and "Open" in hist.columns:
+                        opening = hist["Open"].dropna()
+                        if not opening.empty:
+                            data["Open"] = float(opening.iloc[-1])
+                    if data.get("Previous Close") is None and len(close) > 1:
+                        data["Previous Close"] = float(close.iloc[-2])
             except Exception:
-                pass # Ignore if history fails
+                pass # Ignore history failure
 
-        # 3. Use get_info() for less critical, supplemental data (can be slow/flaky)
+        # Optional: keep get_info(), but never let it fail the run
         try:
             info = stock.get_info()
             data["Company Name"] = info.get('longName')
@@ -53,18 +59,15 @@ def get_stock_info(ticker: str) -> str:
             data["Trailing EPS"] = info.get('trailingEps')
             data["52 Week High"] = info.get('fiftyTwoWeekHigh')
             data["52 Week Low"] = info.get('fiftyTwoWeekLow')
-            # Use get_info as a fallback for data that might also be in fast_info
             if data.get("Market Cap") is None: data["Market Cap"] = info.get('marketCap')
             if data.get("Volume") is None: data["Volume"] = info.get('volume')
         except Exception:
-            pass # get_info() can fail, but we can proceed without it
-        # --- END OF NEW LOGIC ---
+            pass # get_info() is non-critical
 
-        # Validate that we have at least a price; otherwise, the analysis is not useful.
+        # --- FIX: Remove hard error gate. Proceed with N/A. ---
         if data.get("Current Price") is None:
-            return f"Error: Could not retrieve current price for ticker '{ticker}'. The symbol may be invalid or delisted."
+            data["Current Price"] = "N/A" # Set to N/A instead of returning an error string
 
-        # Define the desired order and format the data into a clean, readable string
         key_order = [
             "Company Name", "Symbol", "Current Price", "Previous Close", "Open",
             "Day Low", "Day High", "Market Cap", "Trailing P/E", "Forward P/E",
@@ -83,8 +86,5 @@ def get_stock_info(ticker: str) -> str:
 
 @tool
 def scrape_website(url: str) -> str:
-    """
-    A placeholder for a website scraping tool.
-    In a real implementation, this would use libraries like BeautifulSoup or Selenium.
-    """
+    """A placeholder for a website scraping tool."""
     return "Scraping functionality is not implemented in this demo."
