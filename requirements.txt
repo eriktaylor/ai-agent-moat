@@ -11,3 +11,4 @@ sentence-transformers
 PyMuPDF
 duckduckgo-search
 streamlit-extras
+requests

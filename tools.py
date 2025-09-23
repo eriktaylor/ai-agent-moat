@@ -1,5 +1,6 @@
 import yfinance as yf
 from langchain.tools import tool
+import requests  # <-- ADD THIS IMPORT
 
 @tool
 def get_stock_info(ticker: str) -> str:
@@ -8,7 +9,17 @@ def get_stock_info(ticker: str) -> str:
     Returns a formatted string of the data or an error message if the ticker is invalid or data is unavailable.
     """
     try:
-        stock = yf.Ticker(ticker)
+        # --- THIS IS THE FIX ---
+        # Create a session with a browser-like User-Agent to avoid being blocked.
+        session = requests.Session()
+        session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.102 Safari/537.36'
+        })
+        
+        # Pass the session to the Ticker object.
+        stock = yf.Ticker(ticker, session=session)
+        # --- END OF FIX ---
+
         info = stock.info
 
         # Check if essential data is present. 'regularMarketPrice' is a good indicator of a valid ticker.
@@ -52,6 +63,6 @@ def get_stock_info(ticker: str) -> str:
 def scrape_website(url: str) -> str:
     """
     A placeholder for a website scraping tool.
-    In a real implementation, this would use libraries like BeautifulSoup.
+    In a real implementation, this would use libraries like BeautifulSoup or Selenium.
     """
-    return f"Scraping content from {url}..."
+    return "Scraping functionality is not implemented in this demo."
