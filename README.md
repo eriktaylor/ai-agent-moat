@@ -37,7 +37,11 @@ A key difference in this version is its use of **DuckDuckGo for web searches**, 
 
 ## Project Evolution
 
-**Most Recent Update (September 23, 2025)**:
+**Most Recent Update (December 8, 2025)**:
+
+*RIP Google Gemini Pro 2.5 - Free Tier, it is no more.
+
+**Update (September 23, 2025)**:
 
 * Fixed critical bugs with Yahoo Finance data fetching and key dependencies, significantly improving application stability.
 
